@@ -36,8 +36,38 @@ function decodeBase64ToBlob(base64: string, mimeType: string): Blob {
   return new Blob([bytes], { type: mimeType });
 }
 
-function mimeTypeForFormat(format: "png" | "jpeg" | "webp"): string {
-  return format === "jpeg" ? "image/jpeg" : format === "webp" ? "image/webp" : "image/png";
+type OutputFormat = "png" | "jpeg" | "webp" | "gif" | "svg";
+
+const MIME_TYPES: Record<OutputFormat, string> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  svg: "image/svg+xml",
+};
+
+/**
+ * Request fields the SDK doesn't type yet (GPT Image 2.6). The SDK forwards unknown
+ * body fields as-is, so these are spread in after the typed fields.
+ */
+function untypedImageFields(
+  params: GenerationParams,
+  outputFormat: OutputFormat
+): Record<string, unknown> {
+  const options = params.modelOptions ?? {};
+  return {
+    ...(typeof options.complexity === "string" ? { complexity: options.complexity } : {}),
+    ...(outputFormat === "gif"
+      ? {
+          ...(typeof options.gifFrameCount === "number"
+            ? { frame_count: options.gifFrameCount }
+            : {}),
+          ...(typeof options.gifFrameDurationMs === "number"
+            ? { frame_duration_ms: options.gifFrameDurationMs }
+            : {}),
+        }
+      : {}),
+  };
 }
 
 async function generateImage(
@@ -49,8 +79,17 @@ async function generateImage(
   const modelId = normalizeModelId(params.modelId, "openai");
 
   const size = resolveOpenAIImageSize(modelId, params.aspectRatio, params.resolution);
-  const n = Math.max(1, params.numberOfImages);
-  const outputFormat: "png" | "jpeg" | "webp" = "png";
+  const isEdit = params.referenceImages.length > 0;
+  // SVG and GIF are generations-only; option resolution already drops them when references
+  // are attached, but never send them to the edits endpoint.
+  const requestedFormat = params.modelOptions?.outputFormat;
+  const outputFormat: OutputFormat =
+    !isEdit && (requestedFormat === "svg" || requestedFormat === "gif") ? requestedFormat : "png";
+  // The API requires n = 1 for SVG.
+  const n = outputFormat === "svg" ? 1 : Math.max(1, params.numberOfImages);
+  const untypedFields = untypedImageFields(params, outputFormat);
+  // The SDK types `output_format` as raster-only.
+  const outputFormatParam = outputFormat as "png";
   const quality = (params.quality ?? undefined) as OpenAI.ImageEditParams["quality"];
 
   // The SDK's `size` is typed as a closed union of the docs' popular strings, but
@@ -59,7 +98,7 @@ async function generateImage(
   const sizeParam = size as never;
 
   try {
-    if (params.referenceImages.length > 0) {
+    if (isEdit) {
       const files = await Promise.all(
         params.referenceImages.map((ref, index) =>
           toFile(ref.blob, `reference-${index}.${ref.blob.type.split("/")[1] || "png"}`, {
@@ -75,7 +114,8 @@ async function generateImage(
         n,
         size: sizeParam,
         ...(quality ? { quality } : {}),
-        output_format: outputFormat,
+        output_format: outputFormatParam,
+        ...untypedFields,
       };
       logger.debug("[image-generation] Raw API request", { provider: "openai", request });
       const response = await client.images.edit(request);
@@ -90,7 +130,8 @@ async function generateImage(
       n,
       size: sizeParam,
       ...(quality ? { quality } : {}),
-      output_format: outputFormat,
+      output_format: outputFormatParam,
+      ...untypedFields,
     };
     logger.debug("[image-generation] Raw API request", { provider: "openai", request });
     const response = await client.images.generate(request);
@@ -104,13 +145,13 @@ async function generateImage(
 
 async function parseResponse(
   response: { data?: Array<{ b64_json?: string | null; url?: string | null }> | null; usage?: any },
-  outputFormat: "png" | "jpeg" | "webp",
+  outputFormat: OutputFormat,
   modelId: string
 ): Promise<GenerationResult[]> {
   const entries = response.data ?? [];
   if (entries.length === 0) throw new Error("No image in OpenAI response");
 
-  const mimeType = mimeTypeForFormat(outputFormat);
+  const mimeType = MIME_TYPES[outputFormat];
   const usage = response.usage;
 
   return Promise.all(

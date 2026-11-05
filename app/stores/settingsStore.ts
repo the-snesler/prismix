@@ -4,6 +4,7 @@ import {
   BUILT_IN_MODELS,
   BUILT_IN_TEXT_MODELS,
   BUILT_IN_UPSCALERS,
+  getLibraryCapabilities,
   mergeWithBuiltInModels,
   mergeWithBuiltInTextModels,
   mergeWithBuiltInUpscalers,
@@ -442,7 +443,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "studio-settings",
-      version: 25,
+      version: 26,
       partialize: (state) => ({
         apiKeys: state.apiKeys,
         models: state.models,
@@ -550,6 +551,18 @@ export const useSettingsStore = create<SettingsState>()(
             seed[0] = { ...seed[0], enabled: true };
           }
           state = { ...state, textModels: seed, textModel: undefined };
+        }
+
+        if (version < 26) {
+          // Custom models added from the model library pick up new library capabilities
+          // (e.g. GPT Image 2.6 options). Built-ins are refreshed by mergeWithBuiltInModels.
+          state = {
+            ...state,
+            models: state.models?.map((model) => {
+              const capabilities = model.isCustom ? getLibraryCapabilities(model.id) : undefined;
+              return capabilities ? { ...model, capabilities } : model;
+            }),
+          };
         }
 
         // kinda duplicating our default state here but ensures all fields are populated correctly after migration

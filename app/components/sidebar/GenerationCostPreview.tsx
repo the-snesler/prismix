@@ -10,10 +10,15 @@ import {
   QUALITIES,
   RESOLUTIONS_LABELS,
 } from "~/lib/models";
+import {
+  describeModelOptions,
+  getOptionImagesPerRequestLimit,
+  modelOptionsCostDistance,
+} from "~/lib/modelOptions";
 import { type ImageStatRecord } from "~/lib/stats";
 import { formatUsd, getAspectRatioValue } from "~/lib/util";
 import { useGalleryStore } from "~/stores/galleryStore";
-import type { AspectRatio, Resolution, StoredModel } from "~/types";
+import type { AspectRatio, ModelOptionValues, Resolution, StoredModel } from "~/types";
 
 // Unknown/default values are furthest away from a specific setting.
 function parameterDistance(
@@ -58,6 +63,8 @@ interface Props {
   aspectRatio: AspectRatio | null;
   resolution: Resolution;
   quality: string | null;
+  /** Resolved options per selected model. */
+  modelOptions: Record<string, ModelOptionValues>;
   numberOfImages: number;
 }
 
@@ -67,6 +74,7 @@ export function GenerationCostPreview({
   aspectRatio,
   resolution,
   quality,
+  modelOptions,
   numberOfImages,
 }: Props) {
   const totalCount = useGalleryStore((s) => s.totalCount);
@@ -102,10 +110,18 @@ export function GenerationCostPreview({
             model && aspectRatio && doesModelSupportAspectRatio(model, aspectRatio)
               ? aspectRatio
               : null;
+          const taskOptions = modelOptions[modelId] ?? {};
           const outputs =
             count *
             (model?.capabilities.supportsNumberOfImages
-              ? Math.max(1, Math.min(numberOfImages, model.capabilities.maxImagesPerRequest ?? 1))
+              ? Math.max(
+                  1,
+                  Math.min(
+                    numberOfImages,
+                    model.capabilities.maxImagesPerRequest ?? 1,
+                    getOptionImagesPerRequestLimit(taskOptions)
+                  )
+                )
               : 1);
           const candidates = (records ?? []).filter(
             (r) =>
@@ -117,6 +133,7 @@ export function GenerationCostPreview({
           const scored = candidates.map((record) => ({
             record,
             distance: [
+              modelOptionsCostDistance(model, record.modelOptions, taskOptions),
               parameterDistance(
                 record.resolution,
                 taskResolution,
@@ -126,12 +143,14 @@ export function GenerationCostPreview({
               costAspectRatioDistance(model, record, taskAspectRatio, taskResolution),
             ],
           }));
-          // Resolution wins over quality; quality wins over aspect ratio, regardless of distance.
+          // Cost-affecting model options (e.g. GIF vs still) win over resolution; resolution
+          // wins over quality; quality wins over aspect ratio, regardless of distance.
           scored.sort(
             (a, b) =>
               a.distance[0] - b.distance[0] ||
               a.distance[1] - b.distance[1] ||
-              a.distance[2] - b.distance[2]
+              a.distance[2] - b.distance[2] ||
+              a.distance[3] - b.distance[3]
           );
           const closest = scored[0]?.distance;
           const matches = scored
@@ -142,7 +161,12 @@ export function GenerationCostPreview({
           const similar = closest?.some((distance) => distance > 0) ?? false;
           const matchedSettings = new Map<string, number>();
           for (const record of matches) {
-            const setting = `${record.resolution ?? "default resolution"} + ${record.quality ?? "default quality"} + ${record.aspectRatio ?? "auto aspect ratio"}`;
+            const setting = [
+              record.resolution ?? "default resolution",
+              record.quality ?? "default quality",
+              record.aspectRatio ?? "auto aspect ratio",
+              ...describeModelOptions(record.modelOptions, { costOnly: true, model }),
+            ].join(" + ");
             matchedSettings.set(setting, (matchedSettings.get(setting) ?? 0) + 1);
           }
           const usd = matches.length
@@ -158,7 +182,16 @@ export function GenerationCostPreview({
             matchedSettings,
           };
         }),
-    [records, models, modelSelections, aspectRatio, resolution, quality, numberOfImages]
+    [
+      records,
+      models,
+      modelSelections,
+      aspectRatio,
+      resolution,
+      quality,
+      modelOptions,
+      numberOfImages,
+    ]
   );
 
   if (!estimates.length) return null;
@@ -174,9 +207,9 @@ export function GenerationCostPreview({
       content={
         <div className="space-y-2">
           <p>
-            Estimated cost based only on past generations with the same model, and similar
-            resolution, quality, and aspect ratio. Excludes rewriting, variation, and reference
-            costs. Actual cost may vary.
+            Estimated cost based only on past generations with the same model, and similar output
+            options, resolution, quality, and aspect ratio. Excludes rewriting, variation, and
+            reference costs. Actual cost may vary.
           </p>
           {estimates.map((e) => (
             <div key={e.modelId}>

@@ -8,7 +8,12 @@ import { createLoadingPreview } from "~/lib/imageProcessing";
 import { logger } from "~/lib/logging";
 import { doesModelSupportAspectRatio, getModel, getStrictReferenceImageLimit } from "~/lib/models";
 import { preparePromptBatch } from "~/lib/promptPreparation";
-import type { GalleryItem } from "~/types";
+import {
+  getDraftModelOptionContext,
+  getOptionImagesPerRequestLimit,
+  resolveSelectedModelOptions,
+} from "~/lib/modelOptions";
+import type { GalleryItem, ModelOptionValues } from "~/types";
 import { useGenerationTask, type GenerationTask } from "~/hooks/useGenerationTask";
 
 export function useImageGeneration() {
@@ -45,7 +50,8 @@ export function useImageGeneration() {
 
   const generate = useCallback(async () => {
     const variationsEnabled = useGenerationStore.getState().variationsEnabled;
-    const { currentStyleId, currentCharacterIds, reuseSentPrompt } = useGenerationStore.getState();
+    const { currentStyleId, currentCharacterIds, currentModelOptions, reuseSentPrompt } =
+      useGenerationStore.getState();
     const settings = useSettingsStore.getState();
     const alwaysImprovePromptEnabled = settings.alwaysImprovePromptEnabled;
     const selectedStyle = currentStyleId
@@ -55,12 +61,26 @@ export function useImageGeneration() {
       .map((id) => settings.characters.find((c) => c.id === id && c.enabled))
       .filter((c): c is NonNullable<typeof c> => c !== undefined);
 
+    const modelOptions = resolveSelectedModelOptions(
+      models,
+      modelSelections,
+      currentModelOptions,
+      getDraftModelOptionContext({
+        models,
+        modelSelections,
+        manualReferenceCount: referenceImages.length,
+        style: selectedStyle,
+        characters: selectedCharacters,
+      })
+    );
+
     const signature = buildGenerationSignature({
       prompt,
       modelSelections,
       aspectRatio,
       resolution,
       quality,
+      modelOptions,
       numberOfImages,
       referenceImages,
       styleId: currentStyleId,
@@ -89,6 +109,7 @@ export function useImageGeneration() {
       aspectRatio: GenerationTask["aspectRatio"];
       resolution: GenerationTask["resolution"];
       quality: string | null;
+      modelOptions: ModelOptionValues;
       numberOfImages: number;
     }> = [];
     const pendingItems: GalleryItem[] = [];
@@ -102,7 +123,11 @@ export function useImageGeneration() {
       const taskAspectRatio =
         aspectRatio && doesModelSupportAspectRatio(model, aspectRatio) ? aspectRatio : null;
       const taskQuality = model.capabilities.supportsQuality ? quality : null;
-      const maxBatch = model.capabilities.maxImagesPerRequest ?? 1;
+      const taskOptions = modelOptions[modelId] ?? {};
+      const maxBatch = Math.min(
+        model.capabilities.maxImagesPerRequest ?? 1,
+        getOptionImagesPerRequestLimit(taskOptions)
+      );
       const perCallImages = model.capabilities.supportsNumberOfImages
         ? Math.max(1, Math.min(numberOfImages, maxBatch))
         : 1;
@@ -118,6 +143,7 @@ export function useImageGeneration() {
           aspectRatio: taskAspectRatio,
           resolution: taskResolution,
           quality: taskQuality,
+          modelOptions: taskOptions,
           numberOfImages: perCallImages,
         });
 
@@ -131,6 +157,7 @@ export function useImageGeneration() {
             aspectRatio: taskAspectRatio,
             resolution: taskResolution,
             quality: taskQuality,
+            modelOptions: taskOptions,
             referenceImageIds: referenceImages.map((r) => r.id),
             styleId: selectedStyle?.id,
             manualReferenceImageIds: referenceImages.map((r) => r.id),
@@ -158,6 +185,7 @@ export function useImageGeneration() {
       aspectRatio,
       resolution,
       quality,
+      modelOptions,
       numberOfImages,
       referenceImages,
       styleId: currentStyleId,
@@ -222,6 +250,7 @@ export function useImageGeneration() {
           aspectRatio: slot.aspectRatio,
           resolution: slot.resolution,
           quality: slot.quality,
+          modelOptions: slot.modelOptions,
           numberOfImages: slot.numberOfImages,
           referenceImages: preparedPrompts.referenceImages,
           styleId: selectedStyle?.id,

@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import type { AspectRatio, ReferenceImage, Resolution } from "~/types";
+import type {
+  AspectRatio,
+  ModelOptionId,
+  ModelOptionValues,
+  ReferenceImage,
+  Resolution,
+} from "~/types";
 
 interface GenerationState {
   currentPrompt: string;
@@ -10,6 +16,8 @@ interface GenerationState {
   currentResolution: Resolution;
   currentQuality: string | null;
   currentNumberOfImages: number;
+  /** Raw per-model option picks, keyed by model ID. Resolve with `resolveModelOptions`. */
+  currentModelOptions: Record<string, ModelOptionValues>;
   currentReferenceImages: ReferenceImage[];
   currentStyleId: string | null;
   currentCharacterIds: string[];
@@ -27,6 +35,12 @@ interface GenerationState {
   setResolution: (resolution: Resolution) => void;
   setQuality: (quality: string | null) => void;
   setNumberOfImages: (count: number) => void;
+  /** Set one option for one model; `undefined` clears it back to the default. */
+  setModelOption: (
+    modelId: string,
+    optionId: ModelOptionId,
+    value: string | number | undefined
+  ) => void;
   setVariationsEnabled: (enabled: boolean) => void;
   setAvoidPastVariations: (enabled: boolean) => void;
   addReferenceImage: (image: ReferenceImage) => void;
@@ -51,6 +65,7 @@ export const DEFAULT_GENERATION_STATE = {
   currentResolution: "1K" as Resolution,
   currentQuality: null as string | null,
   currentNumberOfImages: 1,
+  currentModelOptions: {} as Record<string, ModelOptionValues>,
   currentReferenceImages: [],
   currentStyleId: null as string | null,
   currentCharacterIds: [] as string[],
@@ -90,6 +105,17 @@ export const useGenerationStore = create<GenerationState>()((set) => ({
 
   setNumberOfImages: (currentNumberOfImages) =>
     set({ currentNumberOfImages: Math.max(1, Math.min(50, currentNumberOfImages)) }),
+
+  setModelOption: (modelId, optionId, value) =>
+    set((state) => {
+      const { [optionId]: _previous, ...rest } = state.currentModelOptions[modelId] ?? {};
+      return {
+        currentModelOptions: {
+          ...state.currentModelOptions,
+          [modelId]: value === undefined ? rest : { ...rest, [optionId]: value },
+        },
+      };
+    }),
 
   setVariationsEnabled: (variationsEnabled) => set({ variationsEnabled }),
 

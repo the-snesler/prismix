@@ -38,6 +38,7 @@ function useReuseGalleryItem(sent: boolean) {
         currentAspectRatio: item.aspectRatio,
         currentResolution: item.resolution ?? "1K",
         currentQuality: item.quality ?? null,
+        currentModelOptions: item.modelOptions ? { [item.modelId]: item.modelOptions } : {},
         currentNumberOfImages: 1,
       });
     },
