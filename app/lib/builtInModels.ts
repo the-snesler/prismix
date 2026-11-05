@@ -4,8 +4,10 @@ import { resolveLibraryModel } from "./providers/modelLibrary";
 import { OPENAI_IMAGE_MODELS } from "./providers/openaiModels";
 import { REPLICATE_IMAGE_MODELS } from "./providers/replicateModels";
 
-const PREVIOUS_BUILT_IN_IDS: Record<string, string> = {
-  "openai/gpt-image-2.5-flare": "openai/gpt-image-2",
+// Built-in IDs this model replaced, newest first. Users who never loaded an
+// intermediate version may still have an older ID stored.
+const PREVIOUS_BUILT_IN_IDS: Record<string, string[]> = {
+  "openai/gpt-image-2.6-flare": ["openai/gpt-image-2.5-flare", "openai/gpt-image-2"],
 };
 
 const IMAGE_MODEL_LIBRARY = [
@@ -17,7 +19,7 @@ const IMAGE_MODEL_LIBRARY = [
 const DEFAULT_IMAGE_MODEL_IDS = [
   "google/gemini-nano-banana-2.1",
   "replicate/google/nano-banana-pro",
-  "openai/gpt-image-2.5-flare",
+  "openai/gpt-image-2.6-flare",
   "replicate/black-forest-labs/flux-2-flex",
   "replicate/bytedance/seedream-4.5",
 ];
@@ -45,9 +47,10 @@ export function mergeWithBuiltInModels(models?: StoredModel[]): StoredModel[] {
   const existingById = new Map(models.map((model) => [model.id, model]));
 
   const mergedBuiltIns = BUILT_IN_MODELS.map((builtInModel) => {
-    const previous = existingById.get(PREVIOUS_BUILT_IN_IDS[builtInModel.id]);
-    const existing =
-      existingById.get(builtInModel.id) ?? (previous?.isCustom ? undefined : previous);
+    const previous = (PREVIOUS_BUILT_IN_IDS[builtInModel.id] ?? [])
+      .map((id) => existingById.get(id))
+      .find((model) => model && !model.isCustom);
+    const existing = existingById.get(builtInModel.id) ?? previous;
 
     if (!existing) {
       return { ...builtInModel };

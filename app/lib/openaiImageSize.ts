@@ -9,7 +9,7 @@ const ASPECT_RATIO_TO_SIZE: Record<string, "1024x1024" | "1536x1024" | "1024x153
   "2:3": "1024x1536",
 };
 
-// gpt-image-2 and 2.5 accept arbitrary WxH within these constraints.
+// gpt-image-2, 2.5, and 2.6 accept arbitrary WxH within these constraints.
 const GPT_IMAGE_2_MAX_EDGE = 3840;
 const GPT_IMAGE_2_MIN_PIXELS = 655_360;
 const GPT_IMAGE_2_MAX_PIXELS = 8_294_400;

@@ -442,7 +442,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "studio-settings",
-      version: 24,
+      version: 25,
       partialize: (state) => ({
         apiKeys: state.apiKeys,
         models: state.models,
