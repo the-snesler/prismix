@@ -2,7 +2,7 @@ import { Maximize } from "lucide-react";
 import { RESOLUTIONS_LABELS, anyModelSupportsResolution } from "~/lib/models";
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
-import type { Resolution } from "~/types";
+import { OptionHeader, SegmentedButtons } from "./OptionControls";
 
 export function ResolutionSection() {
   const resolution = useGenerationStore((s) => s.currentResolution);
@@ -18,38 +18,17 @@ export function ResolutionSection() {
 
   return (
     <section>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-text-muted">
-          <Maximize className="h-4 w-4" />
-        </span>
-        <h2 className="text-text-tertiary text-xs font-medium tracking-wide uppercase">
-          Resolution
-        </h2>
-      </div>
-      <div className="flex gap-2">
-        {RESOLUTIONS_LABELS.map(([label, res]) => {
-          const isSelected = resolution === res;
-          const showSelectedStyle = isSelected && pickerEnabled;
-
-          return (
-            <button
-              key={res}
-              onClick={() => pickerEnabled && setResolution(res as Resolution)}
-              disabled={!pickerEnabled}
-              className={`flex-1 rounded-lg px-1 py-2 text-sm font-medium transition-colors ${
-                showSelectedStyle
-                  ? "text-accent border border-purple-500 bg-purple-500/20"
-                  : pickerEnabled
-                    ? "border-c-border bg-surface-overlay text-text-tertiary hover:border-c-border border"
-                    : "border-border-subtle bg-surface-overlay/50 text-text-muted cursor-not-allowed border opacity-40"
-              }`}
-            >
-              {label}
-              <p className="text-text-muted text-[0.6rem]">{res} resolution</p>
-            </button>
-          );
-        })}
-      </div>
+      <OptionHeader icon={<Maximize className="h-4 w-4" />} title="Resolution" />
+      <SegmentedButtons
+        options={RESOLUTIONS_LABELS.map(([label, res]) => ({
+          value: res,
+          label,
+          hint: `${res} resolution`,
+        }))}
+        value={resolution}
+        onChange={setResolution}
+        disabled={!pickerEnabled}
+      />
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import type { AspectRatio, ReferenceImage, Resolution } from "~/types";
+import type { AspectRatio, ModelOptionValues, ReferenceImage, Resolution } from "~/types";
 
 interface GenerationSignatureInput {
   prompt: string;
@@ -6,6 +6,8 @@ interface GenerationSignatureInput {
   aspectRatio: AspectRatio | null;
   resolution: Resolution;
   quality: string | null;
+  /** Resolved options per selected model. */
+  modelOptions?: Record<string, ModelOptionValues>;
   numberOfImages: number;
   referenceImages: ReferenceImage[];
   styleId?: string | null;
@@ -27,6 +29,13 @@ export function buildGenerationSignature(input: GenerationSignatureInput): strin
     aspectRatio: input.aspectRatio,
     resolution: input.resolution,
     quality: input.quality,
+    modelOptions: Object.entries(input.modelOptions ?? {})
+      .filter(([, values]) => Object.keys(values).length > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([modelId, values]) => [
+        modelId,
+        Object.entries(values).sort(([a], [b]) => a.localeCompare(b)),
+      ]),
     numberOfImages: input.numberOfImages,
     referenceImageIds: normalizedReferenceIds,
     styleId: input.styleId ?? null,

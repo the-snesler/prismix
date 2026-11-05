@@ -39,6 +39,12 @@ export const BUILT_IN_MODELS: StoredModel[] = DEFAULT_IMAGE_MODEL_IDS.map((id) =
   };
 });
 
+/** Library capabilities for a stored model ID (e.g. "openai/gpt-image-2.6-sunburst"), if any. */
+export function getLibraryCapabilities(id: string): ModelCapabilities | undefined {
+  const definition = IMAGE_MODEL_LIBRARY.find((model) => `${model.provider}/${model.id}` === id);
+  return definition && resolveLibraryModel([definition], definition.id)?.capabilities;
+}
+
 export function mergeWithBuiltInModels(models?: StoredModel[]): StoredModel[] {
   if (!models || models.length === 0) {
     return BUILT_IN_MODELS.map((model) => ({ ...model }));

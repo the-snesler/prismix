@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
 import { useImageGeneration } from "~/hooks/useImageGeneration";
+import { useDraftModelOptions } from "~/hooks/useDraftModelOptions";
 import { buildGenerationSignature } from "~/lib/generationSignature";
 import { getModel, getStrictReferenceImageLimit } from "~/lib/models";
 import { hasProviderAccess } from "~/lib/providers";
@@ -32,6 +33,7 @@ export function GenerateButton() {
   const navigate = useNavigate();
 
   const { generate } = useImageGeneration();
+  const { resolved: modelOptions } = useDraftModelOptions();
 
   const activeModels = Object.entries(modelSelections).filter(([, count]) => count > 0);
   const totalImages = activeModels.reduce((sum, [, count]) => sum + count, 0);
@@ -48,6 +50,7 @@ export function GenerateButton() {
     resolution,
     referenceImages,
     quality,
+    modelOptions,
     numberOfImages,
     styleId: currentStyleId,
     characterIds: currentCharacterIds,
@@ -191,6 +194,7 @@ export function GenerateButton() {
                 aspectRatio={aspectRatio}
                 resolution={resolution}
                 quality={quality}
+                modelOptions={modelOptions}
                 numberOfImages={numberOfImages}
               />
             </>
