@@ -1,14 +1,12 @@
 import { distance } from "fastest-levenshtein";
 import Replicate from "replicate";
 import type { GenerationParams, GenerationResult } from "~/lib/generation";
-import { getImageDimensions } from "~/lib/imageProcessing";
+import { getPlatform } from "~/lib/platform";
 import { logger } from "~/lib/logging";
 import { inferIcon, inferName } from "~/lib/modelNames";
 import { dereferenceProperties, type OpenApiSchemaProperty } from "~/lib/openapi";
 import { SCHEMA_MAPPING_SYSTEM } from "~/lib/prompts";
 import { toRateLimitError } from "~/lib/retry";
-import { callTextModel } from "~/lib/textModel";
-import { useSettingsStore } from "~/stores/settingsStore";
 import { blobToBase64 } from "~/lib/util";
 import type { ModelCapabilities, SchemaMapping, StoredUpscaler } from "~/types";
 import { mergeSearchResults, resolveLibraryModel, searchModelLibrary } from "./modelLibrary";
@@ -17,7 +15,7 @@ import type { Provider, ResolvedImageModel, SearchResult, TextGenerationArgs } f
 import { normalizeModelId } from ".";
 
 function replicateBaseUrl(): string {
-  return new URL("/proxy/replicate/v1", window.location.origin).toString();
+  return getPlatform().providerBaseUrl("replicate");
 }
 
 async function generateImage(
@@ -31,9 +29,8 @@ async function generateImage(
     params.referenceImages.map(async (ref) => blobToBase64(ref.blob))
   );
 
-  const model = useSettingsStore.getState().models.find((m) => m.id === params.modelId);
-  const mapping = model?.schemaMapping;
-  const caps = model?.capabilities;
+  const mapping = params.schemaMapping;
+  const caps = params.capabilities;
 
   const input: Record<string, unknown> = {
     prompt: params.prompt,
@@ -94,10 +91,10 @@ async function generateImage(
         throw new Error(`Failed to fetch generated image: ${response.status}`);
       }
       const blob = await response.blob();
-      const dimensions = await getImageDimensions(blob);
+      const dimensions = await getPlatform().getImageDimensions(blob);
       const inputMegapixels = await Promise.all(
         params.referenceImages.map(async (ref) => {
-          const size = await getImageDimensions(ref.blob);
+          const size = await getPlatform().getImageDimensions(ref.blob);
           return (size.width * size.height) / 1_000_000;
         })
       );
@@ -214,7 +211,7 @@ async function upscale(
   if (!imageResponse.ok) throw new Error(`Failed to fetch upscaled image: ${imageResponse.status}`);
 
   const blob = await imageResponse.blob();
-  const dimensions = await getImageDimensions(blob);
+  const dimensions = await getPlatform().getImageDimensions(blob);
 
   return { blob, width: dimensions.width, height: dimensions.height, metadata: {} };
 }
@@ -236,7 +233,7 @@ interface ReplicateSearchResponse {
 }
 
 async function searchModels(query: string, apiKey: string): Promise<SearchResult[]> {
-  const response = await fetch("/proxy/replicate/v1/models", {
+  const response = await fetch(`${replicateBaseUrl()}/models`, {
     method: "QUERY",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -308,7 +305,7 @@ async function fetchReplicateModelSchema(
   apiKey: string
 ): Promise<{ properties: Record<string, OpenApiSchemaProperty> }> {
   const lower = normalizeModelId(modelId, "replicate").toLowerCase();
-  const response = await fetch(`/proxy/replicate/v1/models/${lower}`, {
+  const response = await fetch(`${replicateBaseUrl()}/models/${lower}`, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
@@ -399,6 +396,10 @@ async function analyzeSchemaWithTextModel(
   properties: Record<string, OpenApiSchemaProperty>
 ): Promise<SchemaAnalysis | null> {
   try {
+    // Loaded lazily: the text model reads the settings store, which must stay out of
+    // the image-generation import graph so it can run outside the browser.
+    // Schema analysis only happens when a user adds a model in Settings.
+    const { callTextModel } = await import("~/lib/textModel");
     const response = await callTextModel(SCHEMA_MAPPING_SYSTEM, JSON.stringify(properties));
 
     const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, response];

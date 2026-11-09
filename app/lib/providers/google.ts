@@ -1,11 +1,11 @@
 import { GoogleGenAI, ThinkingLevel, type Model } from "@google/genai";
 import { distance } from "fastest-levenshtein";
 import type { GenerationParams, GenerationResult } from "~/lib/generation";
-import { getImageDimensions } from "~/lib/imageProcessing";
+import { getPlatform } from "~/lib/platform";
 import { logger } from "~/lib/logging";
 import { inferName } from "~/lib/modelNames";
 import { toRateLimitError } from "~/lib/retry";
-import { blobToBase64 } from "~/lib/util";
+import { base64ToBlob, blobToBase64 } from "~/lib/util";
 import { GOOGLE_IMAGE_MODELS } from "./googleModels";
 import { mergeSearchResults, resolveLibraryModel, searchModelLibrary } from "./modelLibrary";
 import type { Provider, ResolvedImageModel, SearchResult, TextGenerationArgs } from "./types";
@@ -68,17 +68,14 @@ async function generateImage(
     if (!chunk.candidates?.[0]?.content?.parts) continue;
     const inlineData = chunk.candidates[0].content.parts[0]?.inlineData;
     if (inlineData?.data && inlineData?.mimeType) {
-      const binaryString = atob(inlineData.data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-      imageBlob = new Blob([bytes], { type: inlineData.mimeType });
+      imageBlob = base64ToBlob(inlineData.data, inlineData.mimeType);
     }
     if (chunk.modelVersion) modelVersion = chunk.modelVersion;
     if ((chunk as any).usageMetadata) usageMetadata = (chunk as any).usageMetadata;
   }
 
   if (!imageBlob) throw new Error("No image in response");
-  const dimensions = await getImageDimensions(imageBlob);
+  const dimensions = await getPlatform().getImageDimensions(imageBlob);
 
   return [
     {

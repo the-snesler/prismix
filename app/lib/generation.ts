@@ -2,13 +2,14 @@ import type {
   AspectRatio,
   GenerationCostEstimate,
   GenerationUsage,
+  ModelCapabilities,
   ModelOptionValues,
   Provider as ProviderId,
   Resolution,
+  SchemaMapping,
 } from "~/types";
 import { getProvider } from "~/lib/providers";
 import { estimateGenerationCost, resolveModelPricing } from "~/lib/pricing";
-import { beginGenerationUnloadGuard } from "./generationUnloadGuard";
 
 export class RateLimitError extends Error {
   retryAfter: number;
@@ -32,6 +33,10 @@ export interface GenerationParams {
   numberOfImages: number;
   referenceImages: Array<{ id: string; blob: Blob }>;
   itemIds?: string[];
+  /** The model's capabilities (`StoredModel.capabilities`), so providers never read the settings store. */
+  capabilities?: ModelCapabilities;
+  /** Parameter translation for non-standard Replicate models (`StoredModel.schemaMapping`). */
+  schemaMapping?: SchemaMapping;
 }
 
 export interface GenerationResult {
@@ -43,6 +48,10 @@ export interface GenerationResult {
   costEstimate?: GenerationCostEstimate;
 }
 
+/**
+ * Run one provider image call and attach cost estimates. Environment-neutral:
+ * browser concerns such as the tab-close guard belong to the caller.
+ */
 export async function executeGeneration(
   params: GenerationParams,
   apiKey?: string
@@ -51,16 +60,11 @@ export async function executeGeneration(
   if (!provider.generateImage) {
     throw new Error(`Provider ${params.provider} does not support image generation`);
   }
-  const endUnloadGuard = beginGenerationUnloadGuard();
-  try {
-    const pricing = resolveModelPricing(params.provider, params.modelId);
-    const results = await provider.generateImage(params, apiKey);
-    const resolvedPricing = await pricing;
-    return results.map((result) => ({
-      ...result,
-      costEstimate: estimateGenerationCost(resolvedPricing, result.usage, params),
-    }));
-  } finally {
-    endUnloadGuard();
-  }
+  const pricing = resolveModelPricing(params.provider, params.modelId);
+  const results = await provider.generateImage(params, apiKey);
+  const resolvedPricing = await pricing;
+  return results.map((result) => ({
+    ...result,
+    costEstimate: estimateGenerationCost(resolvedPricing, result.usage, params),
+  }));
 }

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useImproveText } from "~/hooks/useImproveText";
 import { executeGeneration } from "~/lib/generation";
+import { beginGenerationUnloadGuard } from "~/lib/generationUnloadGuard";
 import {
   deleteReferenceImagesByIds,
   getReferenceImagesByIds,
@@ -396,19 +397,27 @@ export function CharacterEditView() {
         : [];
 
       const startTime = Date.now();
-      const results = await executeGeneration(
-        {
-          modelId: model.id,
-          provider: model.provider,
-          prompt: `${CHARACTER_REFERENCE_IMAGE_SYSTEM}\n\nCharacter description:\n${description}`,
-          aspectRatio,
-          resolution,
-          quality,
-          numberOfImages: 1,
-          referenceImages: usedReferences.map((r) => ({ id: r.id, blob: r.blob })),
-        },
-        apiKey ?? undefined
-      );
+      const endUnloadGuard = beginGenerationUnloadGuard();
+      let results: Awaited<ReturnType<typeof executeGeneration>>;
+      try {
+        results = await executeGeneration(
+          {
+            modelId: model.id,
+            provider: model.provider,
+            prompt: `${CHARACTER_REFERENCE_IMAGE_SYSTEM}\n\nCharacter description:\n${description}`,
+            aspectRatio,
+            resolution,
+            quality,
+            numberOfImages: 1,
+            referenceImages: usedReferences.map((r) => ({ id: r.id, blob: r.blob })),
+            capabilities: model.capabilities,
+            schemaMapping: model.schemaMapping,
+          },
+          apiKey ?? undefined
+        );
+      } finally {
+        endUnloadGuard();
+      }
       const generationTimeMs = Date.now() - startTime;
 
       const result = results[0];

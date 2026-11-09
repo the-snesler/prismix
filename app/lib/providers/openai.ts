@@ -1,10 +1,10 @@
 import OpenAI, { toFile } from "openai";
 import { distance } from "fastest-levenshtein";
 import type { GenerationParams, GenerationResult } from "~/lib/generation";
-import { getImageDimensions } from "~/lib/imageProcessing";
+import { getPlatform } from "~/lib/platform";
 import { logger } from "~/lib/logging";
 import { toRateLimitError } from "~/lib/retry";
-import { blobToBase64 } from "~/lib/util";
+import { base64ToBlob, blobToBase64 } from "~/lib/util";
 import { isGptImage2, resolveOpenAIImageSize } from "~/lib/openaiImageSize";
 import {
   findLibraryModel,
@@ -18,7 +18,7 @@ import { inferName } from "../modelNames";
 import { normalizeModelId } from ".";
 
 function openaiBaseUrl(): string {
-  return new URL("/proxy/openai/v1", window.location.origin).toString();
+  return getPlatform().providerBaseUrl("openai");
 }
 
 function createClient(apiKey: string): OpenAI {
@@ -27,13 +27,6 @@ function createClient(apiKey: string): OpenAI {
     baseURL: openaiBaseUrl(),
     dangerouslyAllowBrowser: true,
   });
-}
-
-function decodeBase64ToBlob(base64: string, mimeType: string): Blob {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mimeType });
 }
 
 type OutputFormat = "png" | "jpeg" | "webp" | "gif" | "svg";
@@ -158,7 +151,7 @@ async function parseResponse(
     entries.map(async (entry) => {
       let blob: Blob;
       if (entry.b64_json) {
-        blob = decodeBase64ToBlob(entry.b64_json, mimeType);
+        blob = base64ToBlob(entry.b64_json, mimeType);
       } else if (entry.url) {
         const res = await fetch(entry.url);
         if (!res.ok) throw new Error(`Failed to fetch generated image: ${res.status}`);
@@ -167,7 +160,7 @@ async function parseResponse(
         throw new Error("Empty image entry in OpenAI response");
       }
 
-      const dimensions = await getImageDimensions(blob);
+      const dimensions = await getPlatform().getImageDimensions(blob);
       return {
         blob,
         width: dimensions.width,

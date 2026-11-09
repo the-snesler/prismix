@@ -83,6 +83,7 @@ export function useGenerationTask() {
         throw new Error(`No API key for ${task.provider}`);
       }
 
+      const model = getModel(models, task.modelId);
       return executeGeneration(
         {
           modelId: task.modelId,
@@ -95,11 +96,13 @@ export function useGenerationTask() {
           numberOfImages: task.numberOfImages,
           referenceImages: task.referenceImages,
           itemIds: task.itemIds,
+          capabilities: model?.capabilities,
+          schemaMapping: model?.schemaMapping,
         },
         apiKey || undefined
       );
     },
-    [apiKeys, isTaskCanceled]
+    [apiKeys, isTaskCanceled, models]
   );
 
   const executeWithRetry = useCallback(

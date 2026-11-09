@@ -1,12 +1,31 @@
 import type { AspectRatio } from "~/types";
 
-export function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+/** Encode bytes as plain base64 (no data-URL prefix). Works in browsers and Node. */
+export function bytesToBase64(bytes: Uint8Array): string {
+  // String.fromCharCode(...bytes) overflows the call stack on large images, so encode in chunks.
+  const CHUNK_SIZE = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE));
+  }
+  return btoa(binary);
+}
+
+/** Decode plain base64 (no data-URL prefix) into a Blob of the given MIME type. */
+export function base64ToBlob(base64: string, type: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+
+/**
+ * Encode a blob as a `data:<type>;base64,...` URL. Same output as
+ * `FileReader.readAsDataURL`, without depending on the DOM.
+ */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return `data:${blob.type || "application/octet-stream"};base64,${bytesToBase64(bytes)}`;
 }
 
 export function sleep(ms: number): Promise<void> {

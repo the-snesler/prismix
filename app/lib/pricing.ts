@@ -3,6 +3,7 @@ import { findLibraryModel } from "~/lib/providers/modelLibrary";
 import { GOOGLE_IMAGE_MODELS } from "~/lib/providers/googleModels";
 import { OPENAI_IMAGE_MODELS } from "~/lib/providers/openaiModels";
 import { REPLICATE_IMAGE_MODELS } from "~/lib/providers/replicateModels";
+import { getPlatform } from "~/lib/platform";
 
 const CACHE_KEY = "paintball-model-pricing-v1";
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -22,7 +23,7 @@ function libraryPricing(provider: Provider, modelId: string): ModelPricing | und
 
 function cache(): { fetchedAt: number; prices: Record<string, ModelPricing> } | null {
   try {
-    const value = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null");
+    const value = JSON.parse(getPlatform().cache.get(CACHE_KEY) ?? "null");
     return value && typeof value.fetchedAt === "number" && value.prices ? value : null;
   } catch {
     return null;
@@ -68,7 +69,7 @@ async function catalogPricing(): Promise<Record<string, ModelPricing>> {
         if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
         const fetchedAt = Date.now();
         const prices = fromCatalog(await response.json(), fetchedAt);
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ fetchedAt, prices }));
+        getPlatform().cache.set(CACHE_KEY, JSON.stringify({ fetchedAt, prices }));
         return prices;
       } catch {
         return previous?.prices ?? {};
