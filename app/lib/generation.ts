@@ -2,6 +2,7 @@ import type {
   AspectRatio,
   GenerationCostEstimate,
   GenerationUsage,
+  ModelOptionValues,
   Provider as ProviderId,
   Resolution,
 } from "~/types";
@@ -26,6 +27,8 @@ export interface GenerationParams {
   aspectRatio: AspectRatio | null;
   resolution: Resolution | null;
   quality: string | null;
+  /** Resolved model-specific options (see `lib/modelOptions.ts`). */
+  modelOptions?: ModelOptionValues;
   numberOfImages: number;
   referenceImages: Array<{ id: string; blob: Blob }>;
   itemIds?: string[];

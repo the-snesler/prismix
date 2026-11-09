@@ -60,6 +60,7 @@ app/
 ├── lib/
 │   ├── generation.ts         # Core API calls (Google/Replicate)
 │   ├── models.ts             # Capability helpers & ASPECT_RATIOS
+│   ├── modelOptions.ts       # Per-model option registry (complexity, output format, GIF frames)
 │   ├── builtInModels.ts      # Pre-configured model definitions
 │   ├── builtInStyles.ts      # Pre-configured style definitions
 │   ├── db.ts                 # IndexedDB operations
@@ -86,7 +87,7 @@ app/
 
 ### Zustand Stores
 
-1. **`settingsStore`** - Persisted to localStorage (`studio-settings`, current version 18)
+1. **`settingsStore`** - Persisted to localStorage (`studio-settings`, current version 26)
    - `apiKeys`: `{ google, replicate, openai }` — provider API keys
    - `models: StoredModel[]` — built-in + user-added Replicate models (ordered)
    - `textModels: StoredTextModel[]` — list of LLMs; exactly one has `enabled: true`
@@ -101,6 +102,7 @@ app/
    - **Current input state** (for sidebar UI controls):
      - `currentPrompt`, `currentBasePrompt`, `currentModelSelections`
      - `currentAspectRatio`, `currentResolution`, `currentQuality`, `currentNumberOfImages`
+     - `currentModelOptions: Record<modelId, ModelOptionValues>` — raw per-model option picks (see Model Options)
      - `currentReferenceImages: ReferenceImage[]`
      - `currentStyleId`, `currentCharacterId` — single-select pickers
      - `variationsEnabled`, `avoidPastVariations`
@@ -178,6 +180,17 @@ Key helpers in `lib/models.ts`:
 - `anyModelSupportsResolution(models, selectedIds)` — Show resolution picker?
 - `getStrictReferenceImageLimit(models, selectedIds)` — Max reference images
 - `canAttachReferenceCount(models, selectedIds, count)` — Validate attachment
+
+### Model Options
+
+Settings that only some models accept (e.g. GPT Image 2.6 `complexity`, SVG/GIF output) are **model options**, not new top-level generation fields.
+
+- A model opts in with `capabilities.options[id]`: an enum (`values`) or a range (`min`/`max`/`step`/`default`).
+- `lib/modelOptions.ts` → `MODEL_OPTION_DEFINITIONS` owns the label, control (`stepped` slider with a Default stop, `segmented` buttons, `slider`), `affectsCost`, `visibleWhen` (e.g. GIF frame controls only show for GIF), and `unavailableReason` (e.g. SVG/GIF need no references, since those go through the edits endpoint).
+- Raw picks live per model in `generationStore.currentModelOptions`. Always run them through `resolveModelOptions` (or `useDraftModelOptions`) before use. Resolved values are what get sent (`GenerationParams.modelOptions`), saved (`modelOptions` on gallery items/records), hashed (signature), and compared for pricing (only options with `affectsCost`).
+- The sidebar renders one collapsible section per selected model with options, titled with the model name (`components/sidebar/ModelOptionsSections.tsx`), using the shared controls in `OptionControls.tsx`.
+- To add an option: add its ID to `ModelOptionId`, add a definition to the registry, declare it on the models that support it, and send it in the provider.
+- `capabilities.supportsMarkupEdits` marks models whose edits endpoint accepts a markup layer. There's no editor UI for it yet.
 
 ### Custom Models
 
@@ -320,6 +333,8 @@ App is dark-mode only. Key colors:
 3. If new provider: add to `ApiKeys` type in `types/index.ts`, `settingsStore`, and implement in `lib/generation.ts`
 
 ### Adding a New Generation Setting
+
+If only some models support it, make it a model option instead (see Model Options). For settings that apply across models:
 
 1. Add to `GenerationState` in `stores/generationStore.ts` (e.g., `currentStylePreset`) and a setter action; include in the `DEFAULT_GENERATION_STATE` object so `resetDraft()` clears it
 2. Add to `GalleryItem` + `StoredImageRecord` in `types/index.ts` if it should persist on completed items

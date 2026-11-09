@@ -46,6 +46,9 @@ export function resolveLibraryModel<T extends ImageModelDefinition>(
       ...(model.capabilities.supportedQualities && {
         supportedQualities: [...model.capabilities.supportedQualities],
       }),
+      ...(model.capabilities.options && {
+        options: structuredClone(model.capabilities.options),
+      }),
     },
     ...(model.schemaMapping && {
       schemaMapping: {

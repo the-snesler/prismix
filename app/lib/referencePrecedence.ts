@@ -61,3 +61,9 @@ export function computeReferencePrecedence(input: RefPrecedenceInput): RefPreced
     totalDropped: droppedManual + droppedStyle + droppedCharacter,
   };
 }
+
+/** How many references will actually be sent after precedence truncation. */
+export function countKeptReferences(input: RefPrecedenceInput): number {
+  const { keepManual, keepStyle, keepCharacter } = computeReferencePrecedence(input);
+  return keepManual + keepStyle + keepCharacter;
+}

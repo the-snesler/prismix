@@ -21,7 +21,23 @@ export interface ModelCapabilities {
   supportedQualities?: string[];
   supportsNumberOfImages?: boolean;
   maxImagesPerRequest?: number;
+  /** Model-specific options, keyed by `ModelOptionId`. See `lib/modelOptions.ts`. */
+  options?: ModelOptionSpecs;
+  /** Edits endpoint accepts a transparent markup layer over the first image (no UI yet). */
+  supportsMarkupEdits?: boolean;
 }
+
+export type ModelOptionId = "complexity" | "outputFormat" | "gifFrameCount" | "gifFrameDurationMs";
+
+/** What a given model accepts for an option. Labels and behavior live in the option registry. */
+export type ModelOptionSpec =
+  | { kind: "enum"; values: string[] }
+  | { kind: "range"; min: number; max: number; step: number; default: number };
+
+export type ModelOptionSpecs = Partial<Record<ModelOptionId, ModelOptionSpec>>;
+
+/** Option values for one model. A missing key means the option's default. */
+export type ModelOptionValues = Partial<Record<ModelOptionId, string | number>>;
 
 export interface ModelDefinition {
   id: string;
@@ -98,6 +114,8 @@ export interface BaseGalleryItem {
   aspectRatio: AspectRatio | null;
   resolution: Resolution | null;
   quality?: string | null;
+  /** Resolved model-specific options sent with the request (see `lib/modelOptions.ts`). */
+  modelOptions?: ModelOptionValues;
   referenceImageIds: string[];
   /** Manual inputs, kept separately from the final references for original-input reuse. */
   manualReferenceImageIds?: string[];
@@ -165,6 +183,7 @@ export interface StoredImageRecord {
   aspectRatio: AspectRatio | null;
   resolution: Resolution | null;
   quality?: string | null;
+  modelOptions?: ModelOptionValues;
   width: number;
   height: number;
   createdAt: number;

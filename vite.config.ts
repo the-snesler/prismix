@@ -14,6 +14,13 @@ export default defineConfig({
   worker: {
     format: "es",
   },
+  build: {
+    rollupOptions: {
+      // Cloudflare Workers Builds hits EMFILE ("too many open files") with Rollup's default
+      // of 1000 concurrent file reads (lucide-react alone is ~1,600 icon modules).
+      maxParallelFileOps: 64,
+    },
+  },
   server: {
     proxy: {
       "/proxy/replicate": {

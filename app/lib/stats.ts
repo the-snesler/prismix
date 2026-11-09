@@ -1,4 +1,9 @@
-import type { GenerationCostEstimate, ImageScorecard, ScorecardCriterion } from "~/types";
+import type {
+  GenerationCostEstimate,
+  ImageScorecard,
+  ModelOptionValues,
+  ScorecardCriterion,
+} from "~/types";
 import { SCORECARD_CRITERIA } from "./scorecard";
 
 /** Slim, blob-free projection of a stored image — everything the stats page needs. */
@@ -13,6 +18,7 @@ export interface ImageStatRecord {
   aspectRatio: string | null;
   resolution: string | null;
   quality: string | null;
+  modelOptions?: ModelOptionValues;
   megapixels: number;
   styleId: string | null;
   characterIds: string[];
@@ -38,6 +44,7 @@ interface StatSourceRecord {
   resolution: string | null;
   referenceImageIds?: string[];
   quality?: string | null;
+  modelOptions?: ModelOptionValues;
   generationTimeMs?: number;
   costEstimate?: GenerationCostEstimate;
   styleId?: string;
@@ -63,6 +70,7 @@ export function toImageStatRecord(record: StatSourceRecord): ImageStatRecord {
     aspectRatio: record.aspectRatio ?? null,
     resolution: record.resolution ?? null,
     quality: record.quality ?? null,
+    modelOptions: record.modelOptions,
     megapixels: ((record.width || 0) * (record.height || 0)) / 1_000_000,
     styleId: record.styleId ?? null,
     characterIds: record.characterIds ?? [],

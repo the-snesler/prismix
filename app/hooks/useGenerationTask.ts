@@ -10,7 +10,16 @@ import { providerRequiresApiKey } from "~/lib/providers";
 import { retryWithBackoff } from "~/lib/retry";
 import { useGalleryStore } from "~/stores/galleryStore";
 import { useSettingsStore } from "~/stores/settingsStore";
-import type { AspectRatio, Provider, Resolution, StoredImageRecord } from "~/types";
+import type {
+  AspectRatio,
+  ModelOptionValues,
+  Provider,
+  Resolution,
+  StoredImageRecord,
+} from "~/types";
+
+const hasOptions = (options: ModelOptionValues | undefined): options is ModelOptionValues =>
+  !!options && Object.keys(options).length > 0;
 
 export interface GenerationTask {
   /** Gallery item IDs this task produces. Length 1 for single-image models,
@@ -25,6 +34,8 @@ export interface GenerationTask {
   aspectRatio: AspectRatio | null;
   resolution: Resolution | null;
   quality: string | null;
+  /** Resolved model-specific options (see `lib/modelOptions.ts`). */
+  modelOptions?: ModelOptionValues;
   numberOfImages: number;
   referenceImages: Array<{ id: string; blob: Blob; sourceGalleryItemId?: string }>;
   /** IDs of characters used in this generation. */
@@ -80,6 +91,7 @@ export function useGenerationTask() {
           aspectRatio: task.aspectRatio,
           resolution: task.resolution,
           quality: task.quality,
+          modelOptions: task.modelOptions,
           numberOfImages: task.numberOfImages,
           referenceImages: task.referenceImages,
           itemIds: task.itemIds,
@@ -147,6 +159,7 @@ export function useGenerationTask() {
             aspectRatio: task.aspectRatio,
             resolution: task.resolution,
             quality: task.quality,
+            modelOptions: hasOptions(task.modelOptions) ? task.modelOptions : undefined,
             width: result.width,
             height: result.height,
             createdAt,
@@ -182,6 +195,7 @@ export function useGenerationTask() {
             createdAt,
             generationTimeMs,
             referenceImageIds: task.referenceImages.map((r) => r.id),
+            modelOptions: hasOptions(task.modelOptions) ? task.modelOptions : undefined,
             characterIds: task.characterIds?.length ? task.characterIds : undefined,
             styleId: useSettingsStore.getState().styles.some((s) => s.id === task.styleId)
               ? task.styleId
@@ -284,6 +298,7 @@ export function useGenerationTask() {
         aspectRatio: item.aspectRatio,
         resolution: item.resolution,
         quality: item.quality ?? null,
+        modelOptions: item.modelOptions,
         numberOfImages: 1,
         referenceImages: persistedReferences.map((referenceImage) => ({
           id: referenceImage.id,

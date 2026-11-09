@@ -18,6 +18,7 @@ import { AspectRatioSection } from "./AspectRatioSection";
 import { ResolutionSection } from "./ResolutionSection";
 import { QualitySection } from "./QualitySection";
 import { NumberOfImagesSection } from "./NumberOfImagesSection";
+import { ModelOptionsSections } from "./ModelOptionsSections";
 import { GenerateButton } from "./GenerateButton";
 import { PromptVariationsToggle } from "./PromptVariationsToggle";
 import { AvoidPastVariationsToggle } from "./AvoidPastVariationsToggle";
@@ -127,6 +128,7 @@ function GallerySidebarContent() {
         <ResolutionSection />
         <QualitySection />
         <NumberOfImagesSection />
+        <ModelOptionsSections />
       </div>
       <div className="border-border-subtle border-t p-4">
         <GenerateButton />

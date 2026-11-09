@@ -1,8 +1,17 @@
+import type { ModelOptionSpecs } from "~/types";
 import type { ImageModelDefinition } from "./modelLibrary";
 
 export interface OpenAIImageModelConfig {
   sizeMode: "fixed" | "arbitrary";
 }
+
+// https://developers.openai.com/api/docs/guides/image-generation (GPT Image 2.6 section)
+const GPT_IMAGE_2_6_OPTIONS = {
+  complexity: { kind: "enum", values: ["low", "medium", "high"] },
+  outputFormat: { kind: "enum", values: ["standard", "svg", "gif"] },
+  gifFrameCount: { kind: "range", min: 2, max: 64, step: 1, default: 9 },
+  gifFrameDurationMs: { kind: "range", min: 20, max: 2000, step: 10, default: 200 },
+} satisfies ModelOptionSpecs;
 
 export const OPENAI_IMAGE_MODELS = [
   {
@@ -22,6 +31,8 @@ export const OPENAI_IMAGE_MODELS = [
       supportedQualities: ["low", "medium", "high", "xhigh", "max"],
       supportsNumberOfImages: true,
       maxImagesPerRequest: 10,
+      supportsMarkupEdits: true,
+      options: GPT_IMAGE_2_6_OPTIONS,
     },
     config: { sizeMode: "arbitrary" },
     pricing: {
@@ -55,6 +66,8 @@ export const OPENAI_IMAGE_MODELS = [
       supportedQualities: ["low", "medium", "high", "xhigh", "max"],
       supportsNumberOfImages: true,
       maxImagesPerRequest: 10,
+      supportsMarkupEdits: true,
+      options: GPT_IMAGE_2_6_OPTIONS,
     },
     config: { sizeMode: "arbitrary" },
     pricing: {
@@ -88,6 +101,7 @@ export const OPENAI_IMAGE_MODELS = [
       supportedQualities: ["low", "medium", "high", "xhigh", "max"],
       supportsNumberOfImages: true,
       maxImagesPerRequest: 10,
+      supportsMarkupEdits: true,
     },
     config: { sizeMode: "arbitrary" },
     pricing: {
@@ -121,6 +135,7 @@ export const OPENAI_IMAGE_MODELS = [
       supportedQualities: ["low", "medium", "high", "xhigh", "max"],
       supportsNumberOfImages: true,
       maxImagesPerRequest: 10,
+      supportsMarkupEdits: true,
     },
     config: { sizeMode: "arbitrary" },
     pricing: {
