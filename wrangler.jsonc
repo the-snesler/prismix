@@ -5,7 +5,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "prismix",
-  "compatibility_date": "2025-04-04",
+  "compatibility_date": "2026-11-08",
   "main": "./workers/app.ts",
   "observability": {
     "enabled": true,
@@ -17,4 +17,5 @@
   },
   "routes": [{ "pattern": "prismix.tsuni.dev", "custom_domain": true }],
   "preview_urls": true,
+  "previews": {}
 }
