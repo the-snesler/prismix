@@ -141,6 +141,25 @@ describe("JobRunner", () => {
     expect(deps.jobs.listItems()).toEqual([]);
   });
 
+  it("keeps references of failed and pending jobs through reference GC", async () => {
+    const blob = new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
+    for (const id of ["ref-failed", "ref-orphan"]) {
+      await deps.repository.saveReferenceImage({ id, name: id, blob });
+    }
+    await deps.jobs.submit([
+      debugTask(["f"], {
+        provider: "google",
+        modelId: "gemini-x",
+        referenceImageIds: ["ref-failed"],
+      }),
+    ]);
+    await deps.jobs.idle();
+    expect(itemRow("f")?.status).toBe("failed");
+
+    expect(await deps.repository.garbageCollectReferences([])).toBe(1);
+    expect([...(await deps.repository.getExistingReferenceImageIds())]).toEqual(["ref-failed"]);
+  });
+
   it("rejects duplicate, running, and manual-debug submissions", async () => {
     await deps.jobs.submit([debugTask(["dup"])]);
     await expect(deps.jobs.submit([debugTask(["dup"])])).rejects.toBeInstanceOf(JobConflictError);

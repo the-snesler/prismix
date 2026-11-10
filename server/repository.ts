@@ -469,6 +469,23 @@ export class SqliteGalleryRepository implements GalleryRepository {
       for (const id of parseIdList(row.manual)) reachable.add(id);
     }
 
+    // Queued, running, and failed (retryable) jobs haven't produced an image yet,
+    // but still need their references.
+    const jobRows = this.db
+      .prepare(
+        `SELECT json_extract(item, '$.referenceImageIds') AS refs,
+                json_extract(item, '$.manualReferenceImageIds') AS manual
+         FROM items
+         UNION ALL
+         SELECT json_extract(task, '$.referenceImageIds') AS refs, NULL AS manual
+         FROM jobs WHERE status IN ('queued', 'running')`
+      )
+      .all() as Array<{ refs: unknown; manual: unknown }>;
+    for (const row of jobRows) {
+      for (const id of parseIdList(row.refs)) reachable.add(id);
+      for (const id of parseIdList(row.manual)) reachable.add(id);
+    }
+
     for (const session of await this.getAllSessions()) {
       if (session.sourceReferenceId) reachable.add(session.sourceReferenceId);
       for (const id of session.additionalReferenceIds ?? []) reachable.add(id);
