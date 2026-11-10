@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, X, RotateCcw, Clock, Upload } from "lucide-react";
 import type { GalleryItem } from "~/types";
-import { useGalleryStore } from "~/stores/galleryStore";
 import { useImageGeneration } from "~/hooks/useImageGeneration";
 import NumberFlow from "@number-flow/react";
 import { SineWaveGrid } from "./SineWaveGrid";
@@ -15,9 +14,7 @@ interface LoadingCardProps {
 }
 
 export function LoadingCard({ item, variant = "gallery" }: LoadingCardProps) {
-  const dismissItem = useGalleryStore((s) => s.dismissItem);
-  const cancelItem = useGalleryStore((s) => s.cancelItem);
-  const { retryItem } = useImageGeneration();
+  const { retryItem, cancelItem, dismissItem } = useImageGeneration();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);

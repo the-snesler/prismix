@@ -14,7 +14,7 @@ import {
   resolveSelectedModelOptions,
 } from "~/lib/modelOptions";
 import type { GalleryItem, ModelOptionValues } from "~/types";
-import { useGenerationTask, type GenerationTask } from "~/hooks/useGenerationTask";
+import { useGenerationTask, type ImageGenerationTask } from "~/hooks/useGenerationTask";
 
 export function useImageGeneration() {
   const models = useSettingsStore((s) => s.models);
@@ -32,7 +32,7 @@ export function useImageGeneration() {
   const addItems = useGalleryStore((s) => s.addItems);
   const updatePendingPromptFields = useGalleryStore((s) => s.updatePendingPromptFields);
   const updatePendingPhase = useGalleryStore((s) => s.updatePendingPhase);
-  const { runTasks, retryItem } = useGenerationTask();
+  const { runTasks, retryItem, cancelItem, dismissItem } = useGenerationTask();
 
   const persistReferences = useCallback(
     async (
@@ -105,9 +105,9 @@ export function useImageGeneration() {
       itemIds: string[];
       modelId: string;
       modelName: string;
-      provider: GenerationTask["provider"];
-      aspectRatio: GenerationTask["aspectRatio"];
-      resolution: GenerationTask["resolution"];
+      provider: ImageGenerationTask["provider"];
+      aspectRatio: ImageGenerationTask["aspectRatio"];
+      resolution: ImageGenerationTask["resolution"];
       quality: string | null;
       modelOptions: ModelOptionValues;
       numberOfImages: number;
@@ -235,11 +235,18 @@ export function useImageGeneration() {
           ? originalPrompt
           : undefined);
 
-      const tasks: GenerationTask[] = taskSlots.map((slot, taskIndex) => {
+      const referenceImageIds = preparedPrompts.referenceImages.map((r) => r.id);
+      const parentGalleryItemIds = preparedPrompts.referenceImages
+        .map((r) => r.sourceGalleryItemId)
+        .filter((id): id is string => !!id);
+
+      const tasks: ImageGenerationTask[] = taskSlots.map((slot, taskIndex) => {
         const taskPrompt = preparedPrompts.prompts[taskIndex] ?? originalPrompt;
         const taskReplacements = preparedPrompts.variationReplacementsByTask?.[taskIndex];
+        const model = getModel(models, slot.modelId);
 
         return {
+          kind: "image",
           itemIds: slot.itemIds,
           modelId: slot.modelId,
           modelName: slot.modelName,
@@ -252,7 +259,10 @@ export function useImageGeneration() {
           quality: slot.quality,
           modelOptions: slot.modelOptions,
           numberOfImages: slot.numberOfImages,
-          referenceImages: preparedPrompts.referenceImages,
+          referenceImageIds,
+          parentGalleryItemIds,
+          capabilities: model?.capabilities,
+          schemaMapping: model?.schemaMapping,
           styleId: selectedStyle?.id,
           manualReferenceImageIds: referenceImages.map((r) => r.id),
           characterIds: selectedCharacters.map((c) => c.id),
@@ -301,5 +311,5 @@ export function useImageGeneration() {
     updatePendingPhase,
   ]);
 
-  return { generate, retryItem };
+  return { generate, retryItem, cancelItem, dismissItem };
 }

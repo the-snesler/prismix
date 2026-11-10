@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { isServerBackend } from "~/lib/backend/mode";
+import { getServerSettingsStorage } from "~/lib/backend/settingsStorage";
 import {
   BUILT_IN_MODELS,
   BUILT_IN_TEXT_MODELS,
@@ -444,6 +446,11 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: "studio-settings",
       version: 26,
+      // Server builds keep settings on the server (async; see the hydration gate in
+      // routes/home.tsx). Otherwise localStorage, zustand's default.
+      storage: createJSONStorage(() =>
+        isServerBackend ? getServerSettingsStorage() : localStorage
+      ),
       partialize: (state) => ({
         apiKeys: state.apiKeys,
         models: state.models,

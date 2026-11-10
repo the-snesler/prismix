@@ -15,6 +15,8 @@ export interface RetryOptions {
   maxRetries?: number;
   baseBackoffMs?: number;
   shouldContinue?: () => boolean;
+  /** Return false to fail immediately on errors that can't succeed on a retry. */
+  shouldRetry?: (error: unknown) => boolean;
   onWaiting?: (info: RetryWaitInfo) => void;
   onRetrying?: (info: { retryCount: number }) => void;
 }
@@ -53,7 +55,7 @@ export async function retryWithBackoff<T>(
         continue;
       }
 
-      if (retryCount < maxRetries) {
+      if (retryCount < maxRetries && (opts.shouldRetry?.(error) ?? true)) {
         const waitMs = baseBackoffMs * Math.pow(2, retryCount);
         retryCount++;
         opts.onWaiting?.({

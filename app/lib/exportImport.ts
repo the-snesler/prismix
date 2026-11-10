@@ -1,6 +1,31 @@
 import JSZip from "jszip";
 import mime from "mime/lite";
-import type { ImageRecord, StoredCharacter, StoredImageRecord, StoredStyle } from "~/types";
+import type { StoredImageRecord } from "~/types";
+import {
+  ARCHIVE_INFO_FILE,
+  CHARACTERS_FILE,
+  CUSTOM_STYLES_FILE,
+  MANIFEST_FILE,
+  REFERENCES_MANIFEST_FILE,
+  archiveFilename,
+  archiveInfo,
+  emptyImportResult,
+  entryExtension,
+  imageEntryName,
+  manifestEntryToRecord,
+  parseCharacters,
+  parseCustomStyles,
+  parseManifest,
+  parseReferencesManifest,
+  referenceEntryName,
+  toManifestEntry,
+  toReferencesManifestEntry,
+  type ImportResult,
+  type ManifestEntry,
+  type ReferencesManifestEntry,
+} from "./archive/manifest";
+import { isServerBackend } from "./backend/mode";
+import { flushSettings } from "./backend/settingsStorage";
 import {
   getAllImages,
   getImageBlob,
@@ -13,22 +38,26 @@ import {
 import { createThumbnailBlob } from "./imageProcessing";
 import { useSettingsStore } from "~/stores/settingsStore";
 
-// Derived from ImageRecord so any new field added there is automatically
-// included in the export manifest. The binaries live as separate files inside the zip.
-type ManifestEntry = ImageRecord & {
-  filename: string;
-};
+export type { ImportResult } from "./archive/manifest";
 
-type ReferencesManifestEntry = {
-  id: string;
-  name: string;
-  filename: string;
-  sourceGalleryItemId?: string;
-};
+function downloadUrl(url: string, filename: string): void {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
 export async function exportAllImages(
   onProgress?: (current: number, total: number) => void
 ): Promise<void> {
+  // The server streams the archive straight from disk; the browser just downloads it.
+  if (isServerBackend) {
+    downloadUrl("/api/export", archiveFilename());
+    return;
+  }
+
   const images = await getAllImages();
   if (images.length === 0) return;
 
@@ -41,81 +70,83 @@ export async function exportAllImages(
     // (JSZip still buffers the archive itself).
     const originalBlob = await getImageBlob(image.id, "original");
     if (originalBlob) {
-      const ext = mime.getExtension(originalBlob.type) || "png";
-      const filename = `images/${image.id}.${ext}`;
+      const filename = imageEntryName(image.id, mime.getExtension(originalBlob.type) || "png");
       zip.file(filename, originalBlob);
-
-      // Spread the whole record so any new fields on ImageRecord round-trip
-      // through export without needing to be added here.
-      manifest.push({ ...image, filename });
+      manifest.push(toManifestEntry(image, filename));
     }
 
     onProgress?.(i + 1, images.length);
   }
 
-  zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+  zip.file(MANIFEST_FILE, JSON.stringify(manifest, null, 2));
 
   const referenceImages = await getAllReferenceImages();
   const referencesManifest: ReferencesManifestEntry[] = [];
   for (const ref of referenceImages) {
-    const ext = mime.getExtension(ref.blob.type) || "png";
-    const filename = `references/${ref.id}.${ext}`;
+    const filename = referenceEntryName(ref.id, mime.getExtension(ref.blob.type) || "png");
     zip.file(filename, ref.blob);
-    const entry: ReferencesManifestEntry = { id: ref.id, name: ref.name, filename };
-    if (ref.sourceGalleryItemId) entry.sourceGalleryItemId = ref.sourceGalleryItemId;
-    referencesManifest.push(entry);
+    referencesManifest.push(toReferencesManifestEntry(ref, filename));
   }
-  zip.file("references-manifest.json", JSON.stringify(referencesManifest, null, 2));
+  zip.file(REFERENCES_MANIFEST_FILE, JSON.stringify(referencesManifest, null, 2));
 
   const { characters, styles } = useSettingsStore.getState();
-  zip.file("characters.json", JSON.stringify(characters, null, 2));
-  const customStyles = styles.filter((s) => s.isCustom);
-  zip.file("custom-styles.json", JSON.stringify(customStyles, null, 2));
+  zip.file(CHARACTERS_FILE, JSON.stringify(characters, null, 2));
+  zip.file(
+    CUSTOM_STYLES_FILE,
+    JSON.stringify(
+      styles.filter((s) => s.isCustom),
+      null,
+      2
+    )
+  );
+  zip.file(ARCHIVE_INFO_FILE, JSON.stringify(archiveInfo(), null, 2));
 
   const blob = await zip.generateAsync({ type: "blob" });
-  const date = new Date().toISOString().slice(0, 10);
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `prismix-export-${date}.zip`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadUrl(url, archiveFilename());
   URL.revokeObjectURL(url);
 }
 
-export interface ImportResult {
-  imported: number;
-  referencesImported: number;
-  charactersImported: number;
-  stylesImported: number;
-  skipped: number;
-  failed: number;
+/** Server builds: upload the archive and let the server unpack it. */
+async function importOnServer(file: File): Promise<ImportResult> {
+  // The server merges into its stored settings; send any pending local change first.
+  await flushSettings();
+  const response = await fetch("/api/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/zip" },
+    body: file,
+  });
+  const body = (await response.json().catch(() => null)) as
+    | (ImportResult & { error?: undefined })
+    | { error: string }
+    | null;
+  if (!response.ok || !body || "error" in body) {
+    throw new Error(body && "error" in body && body.error ? body.error : `HTTP ${response.status}`);
+  }
+  // The server merged characters and styles into the stored settings; pick them up
+  // before anything here writes settings back.
+  await useSettingsStore.persist.rehydrate();
+  return body;
 }
 
 export async function importFromZip(
   file: File,
   onProgress?: (current: number, total: number) => void
 ): Promise<ImportResult> {
+  if (isServerBackend) return importOnServer(file);
+
   const zip = await JSZip.loadAsync(file);
 
-  const manifestFile = zip.file("manifest.json");
+  const manifestFile = zip.file(MANIFEST_FILE);
   if (!manifestFile) {
-    throw new Error("Invalid archive: missing manifest.json");
+    throw new Error(`Invalid archive: missing ${MANIFEST_FILE}`);
   }
 
-  const manifestText = await manifestFile.async("text");
-  const manifest: ManifestEntry[] = JSON.parse(manifestText);
+  const { entries: manifest, invalid } = parseManifest(await manifestFile.async("text"));
 
   const existingIds = await getExistingImageIds();
-  const result: ImportResult = {
-    imported: 0,
-    referencesImported: 0,
-    charactersImported: 0,
-    stylesImported: 0,
-    skipped: 0,
-    failed: 0,
-  };
+  const result = emptyImportResult();
+  result.failed += invalid;
 
   for (let i = 0; i < manifest.length; i++) {
     const entry = manifest[i];
@@ -133,23 +164,16 @@ export async function importFromZip(
         continue;
       }
 
-      const ext = entry.filename.split(".").pop() || "png";
       const arrayBuffer = await imageFile.async("arraybuffer");
       const originalBlob = new Blob([arrayBuffer], {
-        type: mime.getType(ext) || "application/octet-stream",
+        type: mime.getType(entryExtension(entry.filename)) || "application/octet-stream",
       });
       const thumbnailBlob = await createThumbnailBlob(originalBlob, 400);
 
-      // Spread the manifest entry so any new fields added to StoredImageRecord
-      // round-trip through import without needing to be added here.
-      const { filename: _f, ...entryRest } = entry;
-      void _f;
       const record: StoredImageRecord = {
-        ...entryRest,
+        ...manifestEntryToRecord(entry),
         originalBlob,
         thumbnailBlob,
-        referenceImageIds: entry.referenceImageIds ?? [],
-        metadata: entry.metadata ?? {},
       };
 
       await importImage(record);
@@ -159,11 +183,12 @@ export async function importFromZip(
     }
   }
 
-  const referencesManifestFile = zip.file("references-manifest.json");
+  const referencesManifestFile = zip.file(REFERENCES_MANIFEST_FILE);
   if (referencesManifestFile) {
-    const referencesManifest: ReferencesManifestEntry[] = JSON.parse(
+    const { entries: referencesManifest, invalid: invalidRefs } = parseReferencesManifest(
       await referencesManifestFile.async("text")
     );
+    result.failed += invalidRefs;
     const existingRefIds = await getExistingReferenceImageIds();
 
     for (const entry of referencesManifest) {
@@ -177,10 +202,9 @@ export async function importFromZip(
           result.failed++;
           continue;
         }
-        const ext = entry.filename.split(".").pop() || "png";
         const arrayBuffer = await refFile.async("arraybuffer");
         const blob = new Blob([arrayBuffer], {
-          type: mime.getType(ext) || "application/octet-stream",
+          type: mime.getType(entryExtension(entry.filename)) || "application/octet-stream",
         });
         await saveReferenceImage({
           id: entry.id,
@@ -197,17 +221,17 @@ export async function importFromZip(
 
   const { importCharacters, importCustomStyles } = useSettingsStore.getState();
 
-  const charsFile = zip.file("characters.json");
+  const charsFile = zip.file(CHARACTERS_FILE);
   if (charsFile) {
-    const chars: StoredCharacter[] = JSON.parse(await charsFile.async("text"));
+    const chars = parseCharacters(await charsFile.async("text"));
     const before = useSettingsStore.getState().characters.length;
     importCharacters(chars);
     result.charactersImported = useSettingsStore.getState().characters.length - before;
   }
 
-  const stylesFile = zip.file("custom-styles.json");
+  const stylesFile = zip.file(CUSTOM_STYLES_FILE);
   if (stylesFile) {
-    const importedStyles: StoredStyle[] = JSON.parse(await stylesFile.async("text"));
+    const importedStyles = parseCustomStyles(await stylesFile.async("text"));
     const before = useSettingsStore.getState().styles.filter((s) => s.isCustom).length;
     importCustomStyles(importedStyles);
     result.stylesImported =
