@@ -20,11 +20,13 @@ import {
   referenceEntryName,
   toManifestEntry,
   toReferencesManifestEntry,
+  type ImportProgress,
   type ImportResult,
   type ManifestEntry,
   type ReferencesManifestEntry,
 } from "./archive/manifest";
 import { isServerBackend } from "./backend/mode";
+import { uploadAndImportArchive } from "./backend/archiveUpload";
 import { flushSettings } from "./backend/settingsStorage";
 import {
   getAllImages,
@@ -38,7 +40,7 @@ import {
 import { createThumbnailBlob } from "./imageProcessing";
 import { useSettingsStore } from "~/stores/settingsStore";
 
-export type { ImportResult } from "./archive/manifest";
+export type { ImportProgress, ImportResult } from "./archive/manifest";
 
 function downloadUrl(url: string, filename: string): void {
   const link = document.createElement("a");
@@ -107,33 +109,29 @@ export async function exportAllImages(
   URL.revokeObjectURL(url);
 }
 
-/** Server builds: upload the archive and let the server unpack it. */
-async function importOnServer(file: File): Promise<ImportResult> {
+export interface ImportOptions {
+  onProgress?: (progress: ImportProgress) => void;
+  /** Server builds: cancels the upload, or the import running on the server. */
+  signal?: AbortSignal;
+}
+
+/** Server builds: upload the archive in chunks and let the server unpack it. */
+async function importOnServer(file: File, options: ImportOptions): Promise<ImportResult> {
   // The server merges into its stored settings; send any pending local change first.
   await flushSettings();
-  const response = await fetch("/api/import", {
-    method: "POST",
-    headers: { "Content-Type": "application/zip" },
-    body: file,
-  });
-  const body = (await response.json().catch(() => null)) as
-    | (ImportResult & { error?: undefined })
-    | { error: string }
-    | null;
-  if (!response.ok || !body || "error" in body) {
-    throw new Error(body && "error" in body && body.error ? body.error : `HTTP ${response.status}`);
-  }
+  const result = await uploadAndImportArchive(file, options);
   // The server merged characters and styles into the stored settings; pick them up
   // before anything here writes settings back.
   await useSettingsStore.persist.rehydrate();
-  return body;
+  return result;
 }
 
 export async function importFromZip(
   file: File,
-  onProgress?: (current: number, total: number) => void
+  options: ImportOptions = {}
 ): Promise<ImportResult> {
-  if (isServerBackend) return importOnServer(file);
+  if (isServerBackend) return importOnServer(file, options);
+  const { onProgress } = options;
 
   const zip = await JSZip.loadAsync(file);
 
@@ -144,13 +142,21 @@ export async function importFromZip(
 
   const { entries: manifest, invalid } = parseManifest(await manifestFile.async("text"));
 
+  const referencesManifestFile = zip.file(REFERENCES_MANIFEST_FILE);
+  const references = referencesManifestFile
+    ? parseReferencesManifest(await referencesManifestFile.async("text"))
+    : null;
+
   const existingIds = await getExistingImageIds();
   const result = emptyImportResult();
-  result.failed += invalid;
+  result.failed += invalid + (references?.invalid ?? 0);
+  const total = manifest.length + (references?.entries.length ?? 0);
+  let done = 0;
+  onProgress?.({ phase: "importing", loaded: 0, total });
 
   for (let i = 0; i < manifest.length; i++) {
     const entry = manifest[i];
-    onProgress?.(i + 1, manifest.length);
+    onProgress?.({ phase: "importing", loaded: ++done, total });
 
     if (existingIds.has(entry.id)) {
       result.skipped++;
@@ -183,15 +189,11 @@ export async function importFromZip(
     }
   }
 
-  const referencesManifestFile = zip.file(REFERENCES_MANIFEST_FILE);
-  if (referencesManifestFile) {
-    const { entries: referencesManifest, invalid: invalidRefs } = parseReferencesManifest(
-      await referencesManifestFile.async("text")
-    );
-    result.failed += invalidRefs;
+  if (references) {
     const existingRefIds = await getExistingReferenceImageIds();
 
-    for (const entry of referencesManifest) {
+    for (const entry of references.entries) {
+      onProgress?.({ phase: "importing", loaded: ++done, total });
       if (existingRefIds.has(entry.id)) {
         result.skipped++;
         continue;

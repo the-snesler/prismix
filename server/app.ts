@@ -14,6 +14,7 @@ import { HttpError } from "./routes/util";
 import { SettingsService } from "./settings";
 import { EventHub } from "./events";
 import { JobRunner } from "./jobs";
+import { ImportUploads } from "./uploads";
 import { archiveRoutes } from "./routes/archive";
 import { eventRoutes, jobRoutes } from "./routes/jobs";
 import { createThumbnail } from "./thumbnails";
@@ -27,6 +28,7 @@ export interface AppDeps {
   settings: SettingsService;
   events: EventHub;
   jobs: JobRunner;
+  uploads: ImportUploads;
 }
 
 /** Open the database and file store under `config.dataDir`. */
@@ -49,11 +51,16 @@ export function createDeps(config: ServerConfig): AppDeps {
     createThumbnail: (blob) => createThumbnail(blob),
     concurrencyPerProvider: config.generationConcurrency,
   });
-  return { config, db, files, repository, settings, events, jobs };
+  const uploads = new ImportUploads(path.join(config.dataDir, "tmp", "uploads"), {
+    repository,
+    settings,
+    createThumbnail: (blob) => createThumbnail(blob),
+  });
+  return { config, db, files, repository, settings, events, jobs, uploads };
 }
 
 export function createApp(deps: AppDeps): Hono {
-  const { config, repository, settings, events, jobs } = deps;
+  const { config, repository, settings, events, jobs, uploads } = deps;
   const app = new Hono();
 
   app.onError((error, c) => {
@@ -78,6 +85,7 @@ export function createApp(deps: AppDeps): Hono {
       settings,
       createThumbnail: (blob) => createThumbnail(blob),
       tempDir: path.join(config.dataDir, "tmp"),
+      uploads,
     })
   );
 

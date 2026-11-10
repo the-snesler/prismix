@@ -48,6 +48,14 @@ export interface ImportResult {
   failed: number;
 }
 
+/**
+ * Import progress for the UI. `uploading` counts bytes sent to the server;
+ * `importing` counts archive entries (images and references) processed.
+ */
+export type ImportProgress =
+  | { phase: "uploading"; loaded: number; total: number }
+  | { phase: "importing"; loaded: number; total: number };
+
 export function emptyImportResult(): ImportResult {
   return {
     imported: 0,
