@@ -5,6 +5,7 @@
 **Prismix** is a single-page AI image generation webapp with a BYOK (Bring Your Own Key) model. Users provide their own API keys, generate images with various AI models, and all data stays in their browser.
 
 ### Core Principles
+
 - **Client-side only**: No server-side API routes. Direct browser-to-API calls.
 - **BYOK**: API keys stored in localStorage, images in IndexedDB. Nothing leaves the browser.
 - **Multi-model**: Users can select multiple models and generate images in parallel.
@@ -73,7 +74,8 @@ app/
 │   ├── imageProcessing.ts    # Thumbnail generation, dimension reading
 │   ├── generationSignature.ts# Deduplication hash
 │   ├── retry.ts              # Retry with exponential backoff
-│   ├── exportImport.ts       # ZIP-based gallery export/import
+│   ├── exportImport.ts       # ZIP-based gallery export/import (browser; server mode calls /api/export, /api/import)
+│   ├── archive/manifest.ts   # Archive format shared with the server (file names, parsing, merge rules)
 │   ├── replicateSchema.ts    # Replicate model schema introspection
 │   ├── galleryGrouping.ts    # Date-based grouping utility
 │   ├── stats.ts              # Slim stat records + aggregation for the stats page
@@ -93,6 +95,7 @@ Besides the browser-only build (Cloudflare, the default), the app can be built f
 - `pnpm build:server` bundles `server/index.ts` plus the shared app code it imports into `build/hosted/index.mjs` with esbuild (`server/build.mjs`). `sharp` stays external. `pnpm start:server` runs it. `tsconfig.server.json` is part of `pnpm typecheck`.
 - Server code may import from `app/lib` but must not pull in React, zustand stores, or DOM-only modules at runtime; anything environment-specific goes through the `Platform` seam (`app/lib/platform`).
 - Generations run through a `GenerationBackend` (`app/lib/backend/generation.ts`). Hooks build serializable `GenerationTask`s (`app/lib/tasks/types.ts`; references by ID, so every reference must be saved first) and call `getGenerationBackend().run(tasks)`. Both backends execute tasks with the shared `runGenerationTask` (`app/lib/tasks/runTask.ts`: provider call, retries, thumbnail, save, events). `localGenerationBackend` runs in the tab; `remoteGenerationBackend` posts to `/api/jobs` and mirrors `/api/events` (SSE) into `galleryStore`, so jobs survive closing the tab. Server side: `server/jobs.ts` (`JobRunner`: per-provider concurrency `GENERATION_CONCURRENCY`, failed items kept until dismissed, restart recovery: queued and rate-limit-waiting jobs re-run, mid-request ones become retryable "interrupted" failures).
+- Archives: `server/archive.ts` streams `/api/export` (yazl, originals stored uncompressed) and `/api/import` (upload spooled to `DATA_DIR/tmp`, read entry by entry with yauzl; thumbnails regenerated; characters/custom styles merged into the stored settings, after which the client rehydrates settings). The layout lives in `app/lib/archive/manifest.ts`; change it there so both sides stay compatible.
 - Tests: `pnpm test` (vitest; `app/**/*.test.ts`, `server/**/*.test.ts`).
 - When changing `GalleryRepository`, update all three implementations: `indexedDb.ts`, `http.ts`, and `server/repository.ts` (plus its route in `server/routes/`).
 
@@ -166,10 +169,10 @@ Model definitions live in `lib/builtInModels.ts`. `lib/models.ts` contains only 
 interface StoredModel {
   id: string;
   name: string;
-  provider: 'google' | 'replicate';
+  provider: "google" | "replicate";
   enabled: boolean;
-  isCustom?: boolean;          // User-added via Settings
-  schemaFetched?: boolean;     // Replicate schema has been introspected
+  isCustom?: boolean; // User-added via Settings
+  schemaFetched?: boolean; // Replicate schema has been introspected
   schemaMapping?: SchemaMapping; // Translated parameter names for non-standard models
   capabilities: {
     supportsAspectRatios: boolean;
@@ -189,6 +192,7 @@ interface StoredModel {
 - **Reference Images**: Strict intersection of `maxReferenceImages` across selected models
 
 Key helpers in `lib/models.ts`:
+
 - `anyModelSupportsAspectRatio(models, selectedIds)` — Should picker show?
 - `anyModelSupportsResolution(models, selectedIds)` — Show resolution picker?
 - `getStrictReferenceImageLimit(models, selectedIds)` — Max reference images
@@ -208,6 +212,7 @@ Settings that only some models accept (e.g. GPT Image 2.6 `complexity`, SVG/GIF 
 ### Custom Models
 
 Users can add arbitrary Replicate models via Settings. The app:
+
 1. Calls `replicateSchema.ts` to introspect the model's API schema
 2. Calls the text model with `SCHEMA_MAPPING_SYSTEM` prompt to generate a `SchemaMapping`
 3. Stores the mapping in `settingsStore` so non-standard parameter names are translated correctly
@@ -304,6 +309,7 @@ Users write `{{description: example1, example2}}` in prompts. When Variations is
 ## Text Model
 
 A secondary LLM is used for:
+
 - Generating prompt variations (`VARIATION_SYSTEM`)
 - Reverse-prompting images back to text (`REVERSE_PROMPT_SYSTEM`)
 - Improving user prompts (`IMPROVE_PROMPT_SYSTEM`)
@@ -331,6 +337,7 @@ Uses `masonry-pf` library with CSS column fallback:
 ### Dark Theme
 
 App is dark-mode only. Key colors:
+
 - `zinc-950` — Background
 - `zinc-900` — Elevated surfaces (sidebar, cards)
 - `zinc-800` — Interactive elements
@@ -363,6 +370,7 @@ Add a new `const X_SYSTEM = ...` to `lib/prompts.ts` and call it via `callTextMo
 ### Bumping the Settings Persist Version
 
 `settingsStore` uses Zustand's `persist` middleware with a numeric `version`. When you change the persisted shape:
+
 1. Bump `version` (e.g. 18 → 19)
 2. Add a `if (version < N) { ... }` block in `migrate` to transform older state if needed
 3. Add the new field to the final `return {...}` object with a sensible default

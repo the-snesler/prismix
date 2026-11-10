@@ -14,6 +14,7 @@ import { HttpError } from "./routes/util";
 import { SettingsService } from "./settings";
 import { EventHub } from "./events";
 import { JobRunner } from "./jobs";
+import { archiveRoutes } from "./routes/archive";
 import { eventRoutes, jobRoutes } from "./routes/jobs";
 import { createThumbnail } from "./thumbnails";
 import type { ApiKeys, Provider } from "~/types";
@@ -70,7 +71,15 @@ export function createApp(deps: AppDeps): Hono {
   api.route("/settings", settingsRoutes(settings));
   api.route("/", jobRoutes(jobs));
   api.route("/events", eventRoutes(events));
-  // M5: api.route("/export", exportRoutes(deps)); api.route("/import", importRoutes(deps));
+  api.route(
+    "/",
+    archiveRoutes({
+      repository,
+      settings,
+      createThumbnail: (blob) => createThumbnail(blob),
+      tempDir: path.join(config.dataDir, "tmp"),
+    })
+  );
 
   // Unmatched API paths are JSON 404s, never the SPA shell.
   api.all("*", (c) => c.json({ error: "Not found" }, 404));

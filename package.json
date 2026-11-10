@@ -45,6 +45,8 @@
     "recharts": "^3.10.1",
     "replicate": "^1.4.0",
     "sharp": "^0.35.5",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
@@ -57,6 +59,8 @@
     "@types/node": "^24.19.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
     "esbuild": "^0.28.2",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
