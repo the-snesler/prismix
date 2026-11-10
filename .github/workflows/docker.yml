@@ -1,0 +1,28 @@
+name: Docker
+
+on:
+  push:
+    branches: ['master']
+  pull_request:
+    branches: ['master']
+
+jobs:
+  # Build the Docker image on every PR (no push); publish to GHCR only on master.
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image (PRs)
+        if: github.event_name == 'pull_request'
+        run: docker build -t prismix:ci .
+
+      - name: Build and publish a Docker image for ${{ github.repository }}
+        if: github.event_name == 'push'
+        uses: macbre/push-to-ghcr@v14
+        with:
+          image_name: ${{ github.repository }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
