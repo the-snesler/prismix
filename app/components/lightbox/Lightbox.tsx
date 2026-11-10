@@ -33,7 +33,12 @@ import {
 import { IconButton } from "./IconButton";
 import { ScorecardPanel } from "./ScorecardPanel";
 import { WideIconButton } from "./WideIconButton";
-import { findSessionForImage, getReferenceImagesByIds, saveReferenceImage } from "~/lib/db";
+import {
+  findSessionForImage,
+  getReferenceImagesByIds,
+  loadImageBlob,
+  saveReferenceImage,
+} from "~/lib/db";
 import type {
   CompletedGalleryItem,
   ReferenceImage,
@@ -43,7 +48,7 @@ import type {
 import { Accordion } from "@base-ui/react/accordion";
 import { logger } from "~/lib/logging";
 import { Tooltip } from "../ui/Tooltip";
-import { formatRelativeDate, formatUsd } from "~/lib/util";
+import { formatRelativeDate, formatUsd, imageFileExtension } from "~/lib/util";
 
 export function Lightbox() {
   const navigate = useNavigate();
@@ -146,7 +151,7 @@ export function Lightbox() {
 
     const link = document.createElement("a");
     link.href = galleryImage.originalUrl;
-    link.download = `${galleryImage.modelName}-${Date.now()}.${getBlobExtension(galleryImage.originalBlob)}`;
+    link.download = `${galleryImage.modelName}-${Date.now()}.${imageFileExtension(galleryImage.originalMimeType)}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -182,6 +187,17 @@ export function Lightbox() {
     async (focusPanel: "upscalers" | null) => {
       if (!galleryImage || galleryImage.status !== "completed") return;
 
+      // A linked session restores its own source; otherwise the editor needs the original bytes.
+      let sourceBlob: Blob | null = null;
+      if (!linkedSession) {
+        try {
+          sourceBlob = await loadImageBlob(galleryImage);
+        } catch (error) {
+          logger.error("[lightbox] Failed to load image for editor", error);
+          return;
+        }
+      }
+
       // Set the navigation hint *before* navigation so the editor sidebar reads it on mount.
       setPendingFocusedPanel(focusPanel);
 
@@ -194,12 +210,13 @@ export function Lightbox() {
         navigate("/app/editor");
         return;
       }
+      if (!sourceBlob) return;
 
       const refId = crypto.randomUUID();
       try {
         await saveReferenceImage({
           id: refId,
-          blob: galleryImage.originalBlob,
+          blob: sourceBlob,
           name: `${galleryImage.modelName} - ${galleryImage.prompt.slice(0, 40)}`,
           sourceGalleryItemId: galleryImage.id,
         });
@@ -207,7 +224,7 @@ export function Lightbox() {
         // continue without saved reference
       }
       setEditorSource({
-        blob: galleryImage.originalBlob,
+        blob: sourceBlob,
         prompt: galleryImage.prompt,
         galleryItemId: galleryImage.id,
         referenceId: refId,
@@ -704,14 +721,6 @@ function MetadataRow({ content }: { content: string | [string, JSX.Element] }) {
       {content}
     </span>
   );
-}
-
-function getBlobExtension(blob: Blob): string {
-  const type = blob.type.toLowerCase();
-  if (type.includes("png")) return "png";
-  if (type.includes("webp")) return "webp";
-  if (type.includes("jpeg") || type.includes("jpg")) return "jpg";
-  return "png";
 }
 
 function formatMetric(metric: string, amount: number): string {

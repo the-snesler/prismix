@@ -21,9 +21,11 @@ import { beginGenerationUnloadGuard } from "~/lib/generationUnloadGuard";
 import {
   deleteReferenceImagesByIds,
   getReferenceImagesByIds,
+  loadImageBlob,
   saveImage,
   saveReferenceImage,
 } from "~/lib/db";
+import { logger } from "~/lib/logging";
 import { enqueueImageEmbedding } from "~/lib/embeddingQueue";
 import { createThumbnailBlob } from "~/lib/imageProcessing";
 import { doesModelSupportAspectRatio, getModel } from "~/lib/models";
@@ -332,14 +334,21 @@ export function CharacterEditView() {
     void saveReferenceImage({ id, blob, name });
   }, []);
 
-  const addGalleryItem = useCallback((item: CompletedGalleryItem) => {
+  const addGalleryItem = useCallback(async (item: CompletedGalleryItem) => {
+    let blob: Blob;
+    try {
+      blob = await loadImageBlob(item);
+    } catch (error) {
+      logger.error("[character] Failed to load gallery image", error);
+      return;
+    }
     const id = crypto.randomUUID();
-    const url = URL.createObjectURL(item.originalBlob);
+    const url = URL.createObjectURL(blob);
     objectUrlsRef.current.add(url);
-    setRefs((prev) => [...prev, { id, blob: item.originalBlob, url, isNew: true }]);
+    setRefs((prev) => [...prev, { id, blob, url, isNew: true }]);
     void saveReferenceImage({
       id,
-      blob: item.originalBlob,
+      blob,
       name: item.modelName,
       sourceGalleryItemId: item.id,
     });
@@ -461,9 +470,8 @@ export function CharacterEditView() {
         resolution,
         quality,
         referenceImageIds,
-        originalBlob: result.blob,
         originalUrl: URL.createObjectURL(result.blob),
-        thumbnailBlob,
+        originalMimeType: result.blob.type,
         thumbnailUrl: URL.createObjectURL(thumbnailBlob),
         width: result.width,
         height: result.height,
@@ -571,7 +579,7 @@ export function CharacterEditView() {
               (i) => i.id === imageId && i.status === "completed"
             ) as CompletedGalleryItem | undefined;
             if (galleryItem) {
-              addGalleryItem(galleryItem);
+              void addGalleryItem(galleryItem);
               return;
             }
           }

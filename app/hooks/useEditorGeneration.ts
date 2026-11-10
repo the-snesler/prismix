@@ -293,9 +293,8 @@ export function useEditorGeneration() {
 
         updateItem(itemId, {
           status: "completed",
-          originalBlob: result.blob,
           originalUrl: URL.createObjectURL(result.blob),
-          thumbnailBlob,
+          originalMimeType: result.blob.type,
           thumbnailUrl: URL.createObjectURL(thumbnailBlob),
           width: result.width,
           height: result.height,

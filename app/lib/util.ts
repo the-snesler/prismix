@@ -28,6 +28,21 @@ export async function blobToBase64(blob: Blob): Promise<string> {
   return `data:${blob.type || "application/octet-stream"};base64,${bytesToBase64(bytes)}`;
 }
 
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/svg+xml": "svg",
+  "image/avif": "avif",
+};
+
+/** File extension for a downloaded image. Falls back to "png" for unknown types. */
+export function imageFileExtension(mimeType: string): string {
+  return IMAGE_EXTENSIONS[mimeType.split(";")[0].trim().toLowerCase()] ?? "png";
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

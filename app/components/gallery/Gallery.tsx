@@ -185,8 +185,8 @@ function SelectionActionPopup() {
     return null;
   }
 
-  const handleAttachSelected = () => {
-    const result = attachSelectedItemsToGeneration();
+  const handleAttachSelected = async () => {
+    const result = await attachSelectedItemsToGeneration();
     if (!result.success && result.reason) {
       alert(result.reason);
     }

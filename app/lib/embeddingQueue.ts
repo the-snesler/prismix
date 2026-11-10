@@ -1,4 +1,4 @@
-import { getAllImages, getEmbeddingCounts, getImageById, updateImageEmbedding } from "./db";
+import { getAllImages, getEmbeddingCounts, getImageBlob, updateImageEmbedding } from "./db";
 import { useEmbeddingStatusStore } from "~/stores/embeddingStatusStore";
 import { useGalleryStore } from "~/stores/galleryStore";
 import { useSettingsStore } from "~/stores/settingsStore";
@@ -148,21 +148,13 @@ async function processNext() {
   // Send the thumbnail (400px, already rasterized) rather than the original:
   // SigLIP resizes to 224 internally, so we lose nothing on quality, and SVG
   // originals would otherwise crash the worker's image decoder.
-  const inMemory = useGalleryStore.getState().items.find((i) => i.id === id);
   let blob: Blob | null = null;
-  if (inMemory && inMemory.status === "completed") {
-    blob = inMemory.thumbnailBlob;
-  } else {
-    try {
-      const stored = await getImageById(id);
-      blob = stored?.thumbnailBlob ?? null;
-    } catch (err) {
-      useEmbeddingStatusStore
-        .getState()
-        .reportEmbedError(
-          err instanceof Error ? err.message : "Failed to load image for embedding"
-        );
-    }
+  try {
+    blob = await getImageBlob(id, "thumbnail");
+  } catch (err) {
+    useEmbeddingStatusStore
+      .getState()
+      .reportEmbedError(err instanceof Error ? err.message : "Failed to load image for embedding");
   }
 
   if (!blob) {

@@ -5,8 +5,9 @@ import { useSettingsStore } from "~/stores/settingsStore";
 import { useEditorStore } from "~/stores/editorStore";
 import { useGalleryStore } from "~/stores/galleryStore";
 import { useEditorGeneration } from "~/hooks/useEditorGeneration";
-import { saveReferenceImage } from "~/lib/db";
+import { loadImageBlob, saveReferenceImage } from "~/lib/db";
 import { getSourceTurnBrief } from "~/lib/contextBrief";
+import { logger } from "~/lib/logging";
 import type { StoredUpscaler } from "~/types";
 
 interface UpscalerListProps {
@@ -38,7 +39,12 @@ export function UpscalerList({ highlight = false }: UpscalerListProps) {
       if (editor.selectedItemId) {
         const item = useGalleryStore.getState().items.find((i) => i.id === editor.selectedItemId);
         if (item && item.status === "completed") {
-          canvasBlob = item.originalBlob;
+          try {
+            canvasBlob = await loadImageBlob(item);
+          } catch (error) {
+            logger.error("[upscaler] Failed to load selected image", error);
+            return;
+          }
           canvasSourceGalleryItemId = item.id;
         }
       }
