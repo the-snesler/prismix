@@ -44,7 +44,10 @@ let pendingValue: string | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 
-async function put(value: string, keepalive = false): Promise<void> {
+async function put(value: string): Promise<void> {
+  // keepalive lets a save outlive the page (reload, close, navigation), within the
+  // browser's size cap; larger saves can still be cancelled by an unload.
+  const keepalive = value.length < KEEPALIVE_MAX_BYTES;
   const response = await fetch(ENDPOINT, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -95,9 +98,7 @@ function flushOnPageHide() {
     debounceTimer = null;
   }
   pendingValue = null;
-  // keepalive lets the request outlive the page, within the browser's size cap.
-  const keepalive = value.length < KEEPALIVE_MAX_BYTES;
-  void put(value, keepalive).catch((error) => console.error(error));
+  void put(value).catch((error) => console.error(error));
 }
 
 let pageHideListenerAdded = false;
@@ -144,8 +145,10 @@ export function getServerSettingsStorage(): StateStorage {
   if (!pageHideListenerAdded) {
     pageHideListenerAdded = true;
     window.addEventListener("pagehide", flushOnPageHide);
+    // Hidden often precedes an unload (closing or reloading the tab), so use the
+    // keepalive path here too; a plain fetch would be cancelled with the page.
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") void flushSettings();
+      if (document.visibilityState === "hidden") flushOnPageHide();
     });
   }
   return serverSettingsStorage;
