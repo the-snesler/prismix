@@ -7,7 +7,7 @@
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "format": "prettier --write \"app/**/*.{ts,tsx}\"",
-    "typecheck": "react-router typegen && tsc",
+    "typecheck": "wrangler types && react-router typegen && tsc -b",
     "wrangler": "wrangler"
   },
   "dependencies": {

@@ -34,7 +34,7 @@ export function TimelineChart({
   const theme = useChartTheme();
   const formatValue = metric === "spend" ? formatMoney : formatCount;
 
-  const renderTooltip = ({ active, payload, label }: TooltipContentProps<number, string>) => {
+  const renderTooltip = ({ active, payload, label }: TooltipContentProps) => {
     if (!active || !payload?.length) return null;
     const point = payload[0].payload as TimelinePoint;
     const rows = [...series]

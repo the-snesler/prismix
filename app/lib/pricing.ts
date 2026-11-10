@@ -1,5 +1,5 @@
 import type { GenerationCostEstimate, GenerationUsage, ModelPricing, Provider } from "~/types";
-import { findLibraryModel } from "~/lib/providers/modelLibrary";
+import { findLibraryModel, type ImageModelDefinition } from "~/lib/providers/modelLibrary";
 import { GOOGLE_IMAGE_MODELS } from "~/lib/providers/googleModels";
 import { OPENAI_IMAGE_MODELS } from "~/lib/providers/openaiModels";
 import { REPLICATE_IMAGE_MODELS } from "~/lib/providers/replicateModels";
@@ -10,7 +10,7 @@ const TTL_MS = 24 * 60 * 60 * 1000;
 let pricingRequest: Promise<Record<string, ModelPricing>> | null = null;
 
 function libraryPricing(provider: Provider, modelId: string): ModelPricing | undefined {
-  const library =
+  const library: readonly ImageModelDefinition[] =
     provider === "google"
       ? GOOGLE_IMAGE_MODELS
       : provider === "openai"
