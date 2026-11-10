@@ -47,34 +47,46 @@ export function Turn({ turn, turnIndex, isFirst = false }: TurnProps) {
     }
   }, [getItemById, turn.sourceItemId, turn.sourceBlob]);
 
-  // Parent blob (for diff viewer): either the source gallery item's full-res blob,
-  // or the original source blob if this turn edits the original.
-  const { parentBlob, parentLabel, parentItemAspect } = useMemo(() => {
+  // Object URL for an uploaded source (no gallery item), owned by this turn. It backs
+  // the diff viewer's parent image, so it must outlive any diff opened from here.
+  const [uploadedSourceUrl, setUploadedSourceUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (turn.sourceItemId || !turn.sourceBlob) {
+      setUploadedSourceUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(turn.sourceBlob);
+    setUploadedSourceUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [turn.sourceItemId, turn.sourceBlob]);
+
+  // Parent image (for diff viewer): either the source gallery item's full-res image,
+  // or the original uploaded source if this turn edits the original.
+  const { parentUrl, parentLabel, parentItemAspect } = useMemo(() => {
     if (turn.sourceItemId) {
       const item = getItemById(turn.sourceItemId);
       if (item && item.status === "completed") {
         const aspect = item.width > 0 && item.height > 0 ? item.width / item.height : null;
         return {
-          parentBlob: item.originalBlob,
+          parentUrl: item.originalUrl,
           parentLabel: item.modelName,
           parentItemAspect: aspect,
         };
       }
-      return { parentBlob: null, parentLabel: undefined, parentItemAspect: null };
+      return { parentUrl: null, parentLabel: undefined, parentItemAspect: null };
     }
-    return { parentBlob: turn.sourceBlob ?? null, parentLabel: "Source", parentItemAspect: null };
-  }, [getItemById, turn.sourceItemId, turn.sourceBlob]);
+    return { parentUrl: uploadedSourceUrl, parentLabel: "Source", parentItemAspect: null };
+  }, [getItemById, turn.sourceItemId, uploadedSourceUrl]);
 
   // When the parent is an uploaded blob (no gallery item), read its natural dimensions
   // once so we can compare aspect ratios against child outputs.
   const [parentBlobAspect, setParentBlobAspect] = useState<number | null>(null);
   useEffect(() => {
-    if (parentItemAspect != null || !parentBlob) {
+    if (parentItemAspect != null || !parentUrl) {
       setParentBlobAspect(null);
       return;
     }
     let cancelled = false;
-    const url = URL.createObjectURL(parentBlob);
     const img = new Image();
     img.onload = () => {
       if (cancelled) return;
@@ -82,12 +94,11 @@ export function Turn({ turn, turnIndex, isFirst = false }: TurnProps) {
         setParentBlobAspect(img.naturalWidth / img.naturalHeight);
       }
     };
-    img.src = url;
+    img.src = parentUrl;
     return () => {
       cancelled = true;
-      URL.revokeObjectURL(url);
     };
-  }, [parentBlob, parentItemAspect]);
+  }, [parentUrl, parentItemAspect]);
 
   const parentAspect = parentItemAspect ?? parentBlobAspect;
 
@@ -163,9 +174,9 @@ export function Turn({ turn, turnIndex, isFirst = false }: TurnProps) {
                   modelName={item.modelName}
                   isSelected={isSelected}
                   onClick={() => selectItem(item.id)}
-                  childBlob={item.originalBlob}
+                  childUrl={item.originalUrl}
                   childAspect={item.width > 0 && item.height > 0 ? item.width / item.height : null}
-                  parentBlob={parentBlob}
+                  parentUrl={parentUrl}
                   parentLabel={parentLabel}
                   parentAspect={parentAspect}
                 />
@@ -200,9 +211,9 @@ function EditorImageCard({
   isSelected,
   onClick,
   itemId,
-  childBlob,
+  childUrl,
   childAspect,
-  parentBlob,
+  parentUrl,
   parentLabel,
   parentAspect,
 }: {
@@ -211,14 +222,14 @@ function EditorImageCard({
   isSelected: boolean;
   onClick: () => void;
   itemId: string;
-  childBlob: Blob;
+  childUrl: string;
   childAspect: number | null;
-  parentBlob: Blob | null;
+  parentUrl: string | null;
   parentLabel?: string;
   parentAspect: number | null;
 }) {
   const canDiff =
-    parentBlob != null &&
+    parentUrl != null &&
     parentAspect != null &&
     childAspect != null &&
     aspectRatiosCompatibleForDiff(parentAspect, childAspect);
@@ -283,14 +294,14 @@ function EditorImageCard({
         </div>
 
         {/* Diff button (hover only) */}
-        {canDiff && parentBlob && (
+        {canDiff && parentUrl && (
           <div
             className="opacity-0 transition-opacity duration-150 group-hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
               openDiff({
-                parentBlob,
-                childBlob,
+                parentUrl,
+                childUrl,
                 parentLabel,
                 childLabel: modelName,
               });

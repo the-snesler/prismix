@@ -12,3 +12,6 @@
 .wrangler
 .dev.vars*
 worker-configuration.d.ts
+
+# TypeScript build mode
+*.tsbuildinfo

@@ -18,33 +18,26 @@ function DiffViewerInner({
   target: NonNullable<ReturnType<typeof useDiffStore.getState>["target"]>;
   onClose: () => void;
 }) {
-  const { parentBlob, childBlob, parentLabel, childLabel } = target;
+  const { parentUrl, childUrl, parentLabel, childLabel } = target;
 
-  const [parentUrl, setParentUrl] = useState<string | null>(null);
-  const [childUrl, setChildUrl] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
   const [position, setPosition] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const pUrl = URL.createObjectURL(parentBlob);
-    const cUrl = URL.createObjectURL(childBlob);
-    setParentUrl(pUrl);
-    setChildUrl(cUrl);
-
+    let cancelled = false;
     const img = new Image();
     img.onload = () => {
+      if (cancelled) return;
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
         setAspectRatio(img.naturalWidth / img.naturalHeight);
       }
     };
-    img.src = pUrl;
-
+    img.src = parentUrl;
     return () => {
-      URL.revokeObjectURL(pUrl);
-      URL.revokeObjectURL(cUrl);
+      cancelled = true;
     };
-  }, [parentBlob, childBlob]);
+  }, [parentUrl]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

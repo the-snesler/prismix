@@ -108,7 +108,8 @@ export function Gallery({ viewMode }: { viewMode: "grid" | "timeline" }) {
       (entries) => {
         if (entries[0]?.isIntersecting) void loadMoreImages();
       },
-      { rootMargin: "200px", scrollMargin: "400px" }
+      // scrollMargin is newer than TypeScript's DOM lib; browsers without it ignore it.
+      { rootMargin: "200px", scrollMargin: "400px" } as IntersectionObserverInit
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -185,8 +186,8 @@ function SelectionActionPopup() {
     return null;
   }
 
-  const handleAttachSelected = () => {
-    const result = attachSelectedItemsToGeneration();
+  const handleAttachSelected = async () => {
+    const result = await attachSelectedItemsToGeneration();
     if (!result.success && result.reason) {
       alert(result.reason);
     }

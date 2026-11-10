@@ -83,6 +83,7 @@ export function useGenerationTask() {
         throw new Error(`No API key for ${task.provider}`);
       }
 
+      const model = getModel(models, task.modelId);
       return executeGeneration(
         {
           modelId: task.modelId,
@@ -95,11 +96,13 @@ export function useGenerationTask() {
           numberOfImages: task.numberOfImages,
           referenceImages: task.referenceImages,
           itemIds: task.itemIds,
+          capabilities: model?.capabilities,
+          schemaMapping: model?.schemaMapping,
         },
         apiKey || undefined
       );
     },
-    [apiKeys, isTaskCanceled]
+    [apiKeys, isTaskCanceled, models]
   );
 
   const executeWithRetry = useCallback(
@@ -177,18 +180,17 @@ export function useGenerationTask() {
             usage: result.usage,
             costEstimate: result.costEstimate,
           };
-          const storedImage = await saveImage(imageRecord);
+          await saveImage(imageRecord);
           if (isItemCanceled(itemId)) {
             await dbDeleteImage(itemId);
             return;
           }
-          logger.debug("[image-generation] Stored image", storedImage);
+          logger.debug("[image-generation] Stored image", imageRecord);
 
           updateItem(itemId, {
             status: "completed",
-            originalBlob: result.blob,
             originalUrl: URL.createObjectURL(result.blob),
-            thumbnailBlob,
+            originalMimeType: result.blob.type,
             thumbnailUrl: URL.createObjectURL(thumbnailBlob),
             width: result.width,
             height: result.height,

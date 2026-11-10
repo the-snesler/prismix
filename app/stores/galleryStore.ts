@@ -14,7 +14,6 @@ import {
   PAGE_SIZE,
   deleteImage as dbDeleteImage,
   deleteReferenceImage,
-  toDisplayImage,
   updateImageFavorite,
   updateImageCharacters as dbUpdateImageCharacters,
   updateImageScorecard,
@@ -23,6 +22,7 @@ import { useLightboxStore } from "./lightboxStore";
 import { useEmbeddingStatusStore } from "./embeddingStatusStore";
 import { enqueueMissingEmbeddings, refreshEmbeddingCounts } from "~/lib/embeddingQueue";
 import { useSettingsStore } from "./settingsStore";
+import { imageFileExtension } from "~/lib/util";
 
 function maybeKickEmbeddingQueue() {
   if (typeof window === "undefined") return;
@@ -123,16 +123,12 @@ export const useGalleryStore = create<GalleryState>()((set, get) => ({
   loadImages: async () => {
     set({ isLoading: true });
     try {
-      const [storedImages, total] = await Promise.all([
-        getImagesPaginated(PAGE_SIZE, 0),
-        getImageCount(),
-      ]);
-      const items = storedImages.map((img) => toDisplayImage(img));
+      const [items, total] = await Promise.all([getImagesPaginated(PAGE_SIZE, 0), getImageCount()]);
       set({
         items,
         hasLoaded: true,
         dbOffset: PAGE_SIZE,
-        hasMore: storedImages.length >= PAGE_SIZE,
+        hasMore: items.length >= PAGE_SIZE,
         totalCount: total,
       });
       maybeKickEmbeddingQueue();
@@ -149,16 +145,15 @@ export const useGalleryStore = create<GalleryState>()((set, get) => ({
 
     set({ isLoadingMore: true });
     try {
-      const records = await getImagesPaginated(PAGE_SIZE, dbOffset);
-      const newItems = records.map(toDisplayImage);
+      const newItems = await getImagesPaginated(PAGE_SIZE, dbOffset);
 
       const existingIds = new Set(get().items.map((i) => i.id));
       const fresh = newItems.filter((item) => !existingIds.has(item.id));
 
       set((state) => ({
         items: [...state.items, ...fresh],
-        dbOffset: state.dbOffset + records.length,
-        hasMore: records.length >= PAGE_SIZE,
+        dbOffset: state.dbOffset + newItems.length,
+        hasMore: newItems.length >= PAGE_SIZE,
       }));
       maybeKickEmbeddingQueue();
     } catch (error) {
@@ -493,7 +488,7 @@ export const useGalleryStore = create<GalleryState>()((set, get) => ({
     );
 
     selectedItems.forEach((item, index) => {
-      const extension = getBlobExtension(item.originalBlob);
+      const extension = imageFileExtension(item.originalMimeType);
       const link = document.createElement("a");
       link.href = item.originalUrl;
       link.download = `${sanitizeFilename(item.modelName)}-${item.createdAt}-${index + 1}.${extension}`;
@@ -513,13 +508,4 @@ function sanitizeFilename(value: string): string {
       .replace(/^-+|-+$/g, "")
       .toLowerCase() || "image"
   );
-}
-
-function getBlobExtension(blob: Blob): string {
-  const type = blob.type.toLowerCase();
-
-  if (type.includes("png")) return "png";
-  if (type.includes("webp")) return "webp";
-  if (type.includes("jpeg") || type.includes("jpg")) return "jpg";
-  return "png";
 }

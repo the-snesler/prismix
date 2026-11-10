@@ -26,7 +26,7 @@ export function useImproveText({
   systemPrompt: string;
   text: string;
   setText: (next: string) => void;
-  getImages?: () => Blob[] | undefined;
+  getImages?: () => Blob[] | undefined | Promise<Blob[] | undefined>;
   /**
    * When provided alongside `setBaseText`, the snapshot used for undo is
    * controlled externally (e.g. persisted in a Zustand store). Otherwise the
@@ -55,7 +55,7 @@ export function useImproveText({
     setIsImproving(true);
     setError(null);
     try {
-      const images = getImages?.();
+      const images = await getImages?.();
       const userPrompt = buildUserPrompt ? buildUserPrompt(text) : text;
       const improved = await callTextModel(systemPrompt, userPrompt, images);
       setText(improved.trim());

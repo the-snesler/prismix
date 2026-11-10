@@ -15,6 +15,8 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { useImproveText } from "~/hooks/useImproveText";
+import { loadImageBlob } from "~/lib/db";
+import { logger } from "~/lib/logging";
 import { anyModelSupportsReferenceImages, isSoleArbitraryAspectRatioModel } from "~/lib/models";
 import { ELABORATE_PROMPT_SYSTEM } from "~/lib/prompts";
 import { buildElaborationContext } from "~/lib/promptUnification";
@@ -152,13 +154,19 @@ export function PromptInput() {
         if (imageId) {
           const galleryItem = galleryItems.find((item) => item.id === imageId);
           if (galleryItem && galleryItem.status === "completed") {
-            addReferenceImage({
-              id: crypto.randomUUID(),
-              blob: galleryItem.originalBlob,
-              url: URL.createObjectURL(galleryItem.originalBlob),
-              name: name || "Gallery image",
-              sourceGalleryItemId: imageId,
-            });
+            loadImageBlob(galleryItem)
+              .then((imageBlob) => {
+                addReferenceImage({
+                  id: crypto.randomUUID(),
+                  blob: imageBlob,
+                  url: URL.createObjectURL(imageBlob),
+                  name: name || "Gallery image",
+                  sourceGalleryItemId: imageId,
+                });
+              })
+              .catch((error) => {
+                logger.error("[prompt-input] Failed to load dropped gallery image", error);
+              });
             return;
           }
         }

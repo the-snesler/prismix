@@ -1,9 +1,9 @@
 import { distance } from "fastest-levenshtein";
 import type { GenerationParams, GenerationResult } from "~/lib/generation";
-import { getImageDimensions } from "~/lib/imageProcessing";
+import { getPlatform } from "~/lib/platform";
 import { logger } from "~/lib/logging";
 import { toRateLimitError } from "~/lib/retry";
-import { blobToBase64 } from "~/lib/util";
+import { base64ToBlob, blobToBase64 } from "~/lib/util";
 import type { ModelCapabilities, Resolution } from "~/types";
 import { normalizeModelId } from ".";
 import type { Provider, SearchResult, TextGenerationArgs } from "./types";
@@ -183,9 +183,8 @@ async function generateImage(params: GenerationParams, apiKey = ""): Promise<Gen
   return Promise.all(
     response.data.map(async (entry) => {
       if (!entry.b64_json) throw new Error("Empty image entry in OpenRouter response");
-      const bytes = Uint8Array.from(atob(entry.b64_json), (char) => char.charCodeAt(0));
-      const blob = new Blob([bytes], { type: entry.media_type ?? "image/png" });
-      const dimensions = await getImageDimensions(blob);
+      const blob = base64ToBlob(entry.b64_json, entry.media_type ?? "image/png");
+      const dimensions = await getPlatform().getImageDimensions(blob);
       return {
         blob,
         width: dimensions.width,

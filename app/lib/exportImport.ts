@@ -1,8 +1,9 @@
 import JSZip from "jszip";
 import mime from "mime/lite";
-import type { StoredCharacter, StoredImageRecord, StoredStyle } from "~/types";
+import type { ImageRecord, StoredCharacter, StoredImageRecord, StoredStyle } from "~/types";
 import {
   getAllImages,
+  getImageBlob,
   getAllReferenceImages,
   getExistingImageIds,
   getExistingReferenceImageIds,
@@ -12,10 +13,9 @@ import {
 import { createThumbnailBlob } from "./imageProcessing";
 import { useSettingsStore } from "~/stores/settingsStore";
 
-// Derived from StoredImageRecord so any new field added there is automatically
-// included in the export manifest. Only the binary blobs are stripped (they
-// live as separate files inside the zip).
-type ManifestEntry = Omit<StoredImageRecord, "originalBlob" | "thumbnailBlob"> & {
+// Derived from ImageRecord so any new field added there is automatically
+// included in the export manifest. The binaries live as separate files inside the zip.
+type ManifestEntry = ImageRecord & {
   filename: string;
 };
 
@@ -37,17 +37,18 @@ export async function exportAllImages(
 
   for (let i = 0; i < images.length; i++) {
     const image = images[i];
-    const ext = mime.getExtension(image.originalBlob.type) || "png";
-    const filename = `images/${image.id}.${ext}`;
+    // Loaded one at a time so the export never holds every original in memory at once
+    // (JSZip still buffers the archive itself).
+    const originalBlob = await getImageBlob(image.id, "original");
+    if (originalBlob) {
+      const ext = mime.getExtension(originalBlob.type) || "png";
+      const filename = `images/${image.id}.${ext}`;
+      zip.file(filename, originalBlob);
 
-    zip.file(filename, image.originalBlob);
-
-    // Spread the whole record minus blobs so any new fields on StoredImageRecord
-    // round-trip through export without needing to be added here.
-    const { originalBlob: _o, thumbnailBlob: _t, ...rest } = image;
-    void _o;
-    void _t;
-    manifest.push({ ...rest, filename });
+      // Spread the whole record so any new fields on ImageRecord round-trip
+      // through export without needing to be added here.
+      manifest.push({ ...image, filename });
+    }
 
     onProgress?.(i + 1, images.length);
   }

@@ -1,8 +1,9 @@
 import { create } from "zustand";
 
+/** URLs are owned by the caller and must stay valid while the diff is open. */
 export interface DiffTarget {
-  parentBlob: Blob;
-  childBlob: Blob;
+  parentUrl: string;
+  childUrl: string;
   parentLabel?: string;
   childLabel?: string;
 }

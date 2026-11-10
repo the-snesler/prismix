@@ -138,10 +138,12 @@ export type PendingGalleryItem = BaseGalleryItem & PendingGalleryItemFields;
 
 export interface CompletedGalleryItemFields {
   status: "completed";
-  originalBlob: Blob;
-  originalUrl: string; // Object URL for full-quality display/download
-  thumbnailBlob: Blob;
-  thumbnailUrl: string; // Object URL for gallery card display
+  /** Full-quality image URL (an object URL locally, an HTTP URL from a server backend).
+   *  Load the bytes with `loadImageBlob` from `~/lib/db` instead of fetching this directly. */
+  originalUrl: string;
+  /** MIME type of the original image, e.g. for download file extensions. */
+  originalMimeType: string;
+  thumbnailUrl: string; // URL for gallery card display
   width: number;
   height: number;
   createdAt: number;
@@ -170,11 +172,10 @@ export type FailedGalleryItem = BaseGalleryItem & FailedGalleryItemFields;
 
 export type GalleryItem = PendingGalleryItem | CompletedGalleryItem | FailedGalleryItem;
 
-// Stored version without URL (URLs are created at runtime)
-export interface StoredImageRecord {
+/** Persisted image metadata, without the binary payloads. This is also the shape of an
+ *  export manifest entry (plus `filename`). */
+export interface ImageRecord {
   id: string;
-  originalBlob: Blob;
-  thumbnailBlob: Blob;
   prompt: string;
   basePrompt?: string;
   variationReplacements?: string[];
@@ -202,6 +203,12 @@ export interface StoredImageRecord {
   embedding?: number[];
   embeddingModelId?: string;
   scorecard?: ImageScorecard;
+}
+
+/** An image record together with its binaries: the write payload, and the IndexedDB row. */
+export interface StoredImageRecord extends ImageRecord {
+  originalBlob: Blob;
+  thumbnailBlob: Blob;
 }
 
 export type UsageMetric =

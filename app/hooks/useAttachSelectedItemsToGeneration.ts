@@ -1,4 +1,6 @@
 import { useCallback } from "react";
+import { loadImageBlob } from "~/lib/db";
+import { logger } from "~/lib/logging";
 import { canAttachReferenceCount } from "~/lib/models";
 import { useGalleryStore } from "~/stores/galleryStore";
 import { useGenerationStore } from "~/stores/generationStore";
@@ -9,9 +11,8 @@ export function useAttachSelectedItemsToGeneration() {
   const models = useSettingsStore((s) => s.models);
   const clearSelection = useGalleryStore((s) => s.clearSelection);
 
-  return useCallback((): AttachSelectedItemsResult => {
+  return useCallback(async (): Promise<AttachSelectedItemsResult> => {
     const galleryState = useGalleryStore.getState();
-    const generationState = useGenerationStore.getState();
     const selectedSet = new Set(galleryState.selectedItemIds);
     const selectedItems = galleryState.items.filter(
       (item): item is CompletedGalleryItem =>
@@ -27,29 +28,49 @@ export function useAttachSelectedItemsToGeneration() {
       };
     }
 
-    const selectedModelIds = Object.entries(generationState.currentModelSelections)
-      .filter(([, count]) => count > 0)
-      .map(([modelId]) => modelId);
+    // Validate against the current state before and after loading: references or
+    // model selections may change while the blobs load.
+    const checkFit = () => {
+      const generationState = useGenerationStore.getState();
+      const selectedModelIds = Object.entries(generationState.currentModelSelections)
+        .filter(([, count]) => count > 0)
+        .map(([modelId]) => modelId);
+      const totalReferences = generationState.currentReferenceImages.length + selectedItems.length;
+      return canAttachReferenceCount(models, selectedModelIds, totalReferences);
+    };
+    const notAllowed = (fit: ReturnType<typeof checkFit>): AttachSelectedItemsResult => ({
+      success: false,
+      attachedCount: 0,
+      maxAllowed: fit.maxAllowed,
+      reason:
+        fit.maxAllowed === null
+          ? "One or more selected models do not support reference images."
+          : `Selected images exceed the current model limit (${fit.maxAllowed} max).`,
+    });
 
-    const totalReferences = generationState.currentReferenceImages.length + selectedItems.length;
-    const fit = canAttachReferenceCount(models, selectedModelIds, totalReferences);
+    const initialFit = checkFit();
+    if (!initialFit.allowed) return notAllowed(initialFit);
 
-    if (!fit.allowed) {
+    let blobs: Blob[];
+    try {
+      blobs = await Promise.all(selectedItems.map((item) => loadImageBlob(item)));
+    } catch (error) {
+      logger.error("[attach-selected] Failed to load selected images", error);
       return {
         success: false,
         attachedCount: 0,
-        maxAllowed: fit.maxAllowed,
-        reason:
-          fit.maxAllowed === null
-            ? "One or more selected models do not support reference images."
-            : `Selected images exceed the current model limit (${fit.maxAllowed} max).`,
+        maxAllowed: initialFit.maxAllowed,
+        reason: "Some selected images could not be loaded.",
       };
     }
 
-    const newReferences: ReferenceImage[] = selectedItems.map((item) => ({
+    const fit = checkFit();
+    if (!fit.allowed) return notAllowed(fit);
+
+    const newReferences: ReferenceImage[] = selectedItems.map((item, index) => ({
       id: crypto.randomUUID(),
-      blob: item.originalBlob,
-      url: URL.createObjectURL(item.originalBlob),
+      blob: blobs[index],
+      url: URL.createObjectURL(blobs[index]),
       name: `${item.modelName} - ${item.prompt.slice(0, 40).trim() || "Image"}`,
     }));
 

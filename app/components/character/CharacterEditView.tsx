@@ -17,12 +17,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useImproveText } from "~/hooks/useImproveText";
 import { executeGeneration } from "~/lib/generation";
+import { beginGenerationUnloadGuard } from "~/lib/generationUnloadGuard";
 import {
   deleteReferenceImagesByIds,
   getReferenceImagesByIds,
+  loadImageBlob,
   saveImage,
   saveReferenceImage,
 } from "~/lib/db";
+import { logger } from "~/lib/logging";
 import { enqueueImageEmbedding } from "~/lib/embeddingQueue";
 import { createThumbnailBlob } from "~/lib/imageProcessing";
 import { doesModelSupportAspectRatio, getModel } from "~/lib/models";
@@ -331,14 +334,21 @@ export function CharacterEditView() {
     void saveReferenceImage({ id, blob, name });
   }, []);
 
-  const addGalleryItem = useCallback((item: CompletedGalleryItem) => {
+  const addGalleryItem = useCallback(async (item: CompletedGalleryItem) => {
+    let blob: Blob;
+    try {
+      blob = await loadImageBlob(item);
+    } catch (error) {
+      logger.error("[character] Failed to load gallery image", error);
+      return;
+    }
     const id = crypto.randomUUID();
-    const url = URL.createObjectURL(item.originalBlob);
+    const url = URL.createObjectURL(blob);
     objectUrlsRef.current.add(url);
-    setRefs((prev) => [...prev, { id, blob: item.originalBlob, url, isNew: true }]);
+    setRefs((prev) => [...prev, { id, blob, url, isNew: true }]);
     void saveReferenceImage({
       id,
-      blob: item.originalBlob,
+      blob,
       name: item.modelName,
       sourceGalleryItemId: item.id,
     });
@@ -396,19 +406,27 @@ export function CharacterEditView() {
         : [];
 
       const startTime = Date.now();
-      const results = await executeGeneration(
-        {
-          modelId: model.id,
-          provider: model.provider,
-          prompt: `${CHARACTER_REFERENCE_IMAGE_SYSTEM}\n\nCharacter description:\n${description}`,
-          aspectRatio,
-          resolution,
-          quality,
-          numberOfImages: 1,
-          referenceImages: usedReferences.map((r) => ({ id: r.id, blob: r.blob })),
-        },
-        apiKey ?? undefined
-      );
+      const endUnloadGuard = beginGenerationUnloadGuard();
+      let results: Awaited<ReturnType<typeof executeGeneration>>;
+      try {
+        results = await executeGeneration(
+          {
+            modelId: model.id,
+            provider: model.provider,
+            prompt: `${CHARACTER_REFERENCE_IMAGE_SYSTEM}\n\nCharacter description:\n${description}`,
+            aspectRatio,
+            resolution,
+            quality,
+            numberOfImages: 1,
+            referenceImages: usedReferences.map((r) => ({ id: r.id, blob: r.blob })),
+            capabilities: model.capabilities,
+            schemaMapping: model.schemaMapping,
+          },
+          apiKey ?? undefined
+        );
+      } finally {
+        endUnloadGuard();
+      }
       const generationTimeMs = Date.now() - startTime;
 
       const result = results[0];
@@ -452,9 +470,8 @@ export function CharacterEditView() {
         resolution,
         quality,
         referenceImageIds,
-        originalBlob: result.blob,
         originalUrl: URL.createObjectURL(result.blob),
-        thumbnailBlob,
+        originalMimeType: result.blob.type,
         thumbnailUrl: URL.createObjectURL(thumbnailBlob),
         width: result.width,
         height: result.height,
@@ -562,7 +579,7 @@ export function CharacterEditView() {
               (i) => i.id === imageId && i.status === "completed"
             ) as CompletedGalleryItem | undefined;
             if (galleryItem) {
-              addGalleryItem(galleryItem);
+              void addGalleryItem(galleryItem);
               return;
             }
           }

@@ -24,7 +24,7 @@ import { useSettingsStore } from "~/stores/settingsStore";
 import { anyModelSupportsReferenceImages, getStrictReferenceImageLimit } from "~/lib/models";
 import { callTextModel, isTextModelAvailable } from "~/lib/textModel";
 import { ELABORATE_PROMPT_SYSTEM, REVERSE_PROMPT_SYSTEM } from "~/lib/prompts";
-import { saveReferenceImage } from "~/lib/db";
+import { loadImageBlob, saveReferenceImage } from "~/lib/db";
 import { generateContextBrief, getSourceTurnBrief } from "~/lib/contextBrief";
 import { Tooltip } from "../ui/Tooltip";
 import { ReferenceImageMarkupOverlay } from "../reference/ReferenceImageMarkupOverlay";
@@ -160,11 +160,11 @@ export function EditorInputBar({ onSourceFile }: EditorInputBarProps) {
   const canSubmit =
     hasSource && instruction.trim().length > 0 && !isAnalyzing && selectedModelIds.length > 0;
 
-  // Resolve current canvas blob
-  const getCanvasBlob = useCallback((): Blob | null => {
+  // Resolve current canvas blob. Rejects if the selected gallery image was deleted.
+  const getCanvasBlob = useCallback(async (): Promise<Blob | null> => {
     if (selectedItemId) {
       const item = useGalleryStore.getState().items.find((i) => i.id === selectedItemId);
-      if (item && item.status === "completed") return item.originalBlob;
+      if (item && item.status === "completed") return loadImageBlob(item);
     }
     return sourceBlob;
   }, [selectedItemId, sourceBlob]);
@@ -200,21 +200,8 @@ export function EditorInputBar({ onSourceFile }: EditorInputBarProps) {
         };
         const galleryItems = useGalleryStore.getState().items;
 
-        if (imageId) {
-          const galleryItem = galleryItems.find((item) => item.id === imageId);
-          if (galleryItem && galleryItem.status === "completed") {
-            addReferenceImage({
-              id: crypto.randomUUID(),
-              blob: galleryItem.originalBlob,
-              url: URL.createObjectURL(galleryItem.originalBlob),
-              name: name || "Gallery image",
-              sourceGalleryItemId: imageId,
-            });
-            return;
-          }
-        }
-
-        if (typeof blob === "string") {
+        const addFromBlobUrl = () => {
+          if (typeof blob !== "string") return;
           fetch(blob)
             .then((res) => res.blob())
             .then((blobData) => {
@@ -225,7 +212,28 @@ export function EditorInputBar({ onSourceFile }: EditorInputBarProps) {
                 name: name || "Gallery image",
               });
             });
+        };
+
+        if (imageId) {
+          const galleryItem = galleryItems.find((item) => item.id === imageId);
+          if (galleryItem && galleryItem.status === "completed") {
+            loadImageBlob(galleryItem)
+              .then((original) => {
+                addReferenceImage({
+                  id: crypto.randomUUID(),
+                  blob: original,
+                  url: URL.createObjectURL(original),
+                  name: name || "Gallery image",
+                  sourceGalleryItemId: imageId,
+                });
+              })
+              // Image deleted meanwhile: fall back to the payload's blob URL, if any.
+              .catch(addFromBlobUrl);
+            return;
+          }
         }
+
+        addFromBlobUrl();
       } catch {
         // Ignore invalid drag payloads
       }
@@ -280,10 +288,19 @@ export function EditorInputBar({ onSourceFile }: EditorInputBarProps) {
     [addFiles]
   );
 
+  // `canSubmit` alone doesn't stop a second Enter while the canvas blob loads: the
+  // instruction is only cleared after the await, so guard the load explicitly.
+  const isPreparingSubmitRef = useRef(false);
   const handleSubmit = useCallback(async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || isPreparingSubmitRef.current) return;
 
-    const canvasBlob = getCanvasBlob();
+    isPreparingSubmitRef.current = true;
+    let canvasBlob: Blob | null;
+    try {
+      canvasBlob = await getCanvasBlob().catch(() => null);
+    } finally {
+      isPreparingSubmitRef.current = false;
+    }
     if (!canvasBlob) return;
 
     setIsGenerating(true);
@@ -406,15 +423,16 @@ export function EditorInputBar({ onSourceFile }: EditorInputBarProps) {
     setText: setInstruction,
     baseText: instructionBasePrompt,
     setBaseText: setInstructionBasePrompt,
-    getImages: () => {
-      const canvasBlob = getCanvasBlob();
+    getImages: async () => {
+      const canvasBlob = await getCanvasBlob();
       return canvasBlob ? [canvasBlob] : undefined;
     },
   });
 
   const handleAnalyze = useCallback(async () => {
-    const canvasBlob = getCanvasBlob();
-    if (!canvasBlob || isAnalyzing) return;
+    if (isAnalyzing) return;
+    const canvasBlob = await getCanvasBlob().catch(() => null);
+    if (!canvasBlob) return;
 
     setAnalyzing(true);
     setAnalysisResult(null);

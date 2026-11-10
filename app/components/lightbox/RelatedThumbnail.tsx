@@ -48,38 +48,38 @@ export function RelatedThumbnail(props: RelatedThumbnailProps) {
   const currentAspect =
     current.width > 0 && current.height > 0 ? current.width / current.height : null;
 
-  let childBlob: Blob | null = null;
+  let childUrl: string | null = null;
   let childAspect: number | null = null;
   let childLabel: string | undefined;
   let isSelf = false;
 
   if (props.kind === "gallery-item") {
     if (props.item.status === "completed") {
-      childBlob = props.item.originalBlob;
+      childUrl = props.item.originalUrl;
       childAspect =
         props.item.width > 0 && props.item.height > 0 ? props.item.width / props.item.height : null;
       childLabel = props.item.modelName;
     }
     isSelf = props.item.id === current.id;
   } else {
-    childBlob = props.image.blob;
+    childUrl = props.image.url;
     childAspect = externalRefAspect;
     childLabel = props.image.name;
   }
 
   const canDiff =
     !isSelf &&
-    childBlob != null &&
+    childUrl != null &&
     currentAspect != null &&
     childAspect != null &&
     aspectRatiosCompatibleForDiff(currentAspect, childAspect);
 
   const handleDiffClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!canDiff || !childBlob) return;
+    if (!canDiff || !childUrl) return;
     openDiff({
-      parentBlob: current.originalBlob,
-      childBlob,
+      parentUrl: current.originalUrl,
+      childUrl,
       parentLabel: current.modelName,
       childLabel,
     });
