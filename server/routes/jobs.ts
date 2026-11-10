@@ -4,7 +4,8 @@ import type { EventHub, ServerEvent } from "../events";
 import { JobConflictError, JobValidationError, type JobRunner } from "../jobs";
 import { isObject, notFound, readJsonBody } from "./util";
 
-const KEEPALIVE_MS = 25_000;
+/** Clients treat a silent stream as dead after a few missed pings (see remoteGeneration.ts). */
+const KEEPALIVE_MS = 15_000;
 
 /** `/api/jobs` and `/api/items`: submit, list, cancel, dismiss. */
 export function jobRoutes(runner: JobRunner) {
@@ -68,7 +69,10 @@ export function eventRoutes(events: EventHub) {
         });
         clearTimeout(timer);
         wake = null;
-        if (queue.length === 0 && !stream.aborted) await stream.write(": keepalive\n\n");
+        // A named event rather than an SSE comment, so the client can see it.
+        if (queue.length === 0 && !stream.aborted) {
+          await stream.writeSSE({ event: "ping", data: "{}" });
+        }
       }
       unsubscribe();
     })

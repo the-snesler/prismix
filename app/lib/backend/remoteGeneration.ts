@@ -86,6 +86,12 @@ async function resync(): Promise<void> {
   );
 }
 
+const RECONNECT_MIN_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
+/** The server pings every 15s; a stream silent for this long is presumed dead. Some
+ *  proxies keep the browser's side open after the server goes away. */
+const STALE_STREAM_MS = 45_000;
+
 /** Item IDs whose POST /api/jobs hasn't returned yet; a resync mustn't drop them. */
 const submitting = new Set<string>();
 
@@ -146,20 +152,59 @@ export const remoteGenerationBackend: GenerationBackend = {
 
   connect() {
     if (typeof EventSource === "undefined") return () => {};
-    const source = new EventSource("/api/events");
 
-    // EventSource reconnects by itself; resync on every (re)open.
-    source.onopen = () => {
-      resync().catch((error) => logger.error("[jobs] Resync failed", error));
+    let source: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryDelay = RECONNECT_MIN_MS;
+    let stopped = false;
+    let lastActivity = Date.now();
+    const touch = () => {
+      lastActivity = Date.now();
     };
-    source.addEventListener("item", (event) => {
-      applyServerItem(JSON.parse((event as MessageEvent<string>).data) as GalleryItem);
-    });
-    source.addEventListener("item-removed", (event) => {
-      const { id } = JSON.parse((event as MessageEvent<string>).data) as { id: string };
-      removeItem(id);
-    });
 
-    return () => source.close();
+    const open = () => {
+      touch();
+      source = new EventSource("/api/events");
+      source.addEventListener("ready", touch);
+      source.addEventListener("ping", touch);
+      // Resync on every (re)open: events sent while disconnected aren't replayed.
+      source.onopen = () => {
+        retryDelay = RECONNECT_MIN_MS;
+        resync().catch((error) => logger.error("[jobs] Resync failed", error));
+      };
+      // EventSource retries dropped connections itself, but gives up for good when a
+      // reconnect gets an HTTP error (e.g. a reverse proxy's 502 while the server
+      // restarts). Reopen it ourselves in that case, with backoff.
+      source.onerror = () => {
+        if (stopped || source?.readyState !== EventSource.CLOSED) return;
+        source = null;
+        retryTimer = setTimeout(open, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, RECONNECT_MAX_MS);
+      };
+      source.addEventListener("item", (event) => {
+        touch();
+        applyServerItem(JSON.parse((event as MessageEvent<string>).data) as GalleryItem);
+      });
+      source.addEventListener("item-removed", (event) => {
+        touch();
+        const { id } = JSON.parse((event as MessageEvent<string>).data) as { id: string };
+        removeItem(id);
+      });
+    };
+    open();
+
+    const watchdog = setInterval(() => {
+      if (!source || Date.now() - lastActivity < STALE_STREAM_MS) return;
+      logger.warn("[jobs] Event stream went quiet; reconnecting");
+      source.close();
+      open();
+    }, 5_000);
+
+    return () => {
+      stopped = true;
+      clearInterval(watchdog);
+      clearTimeout(retryTimer);
+      source?.close();
+    };
   },
 };
