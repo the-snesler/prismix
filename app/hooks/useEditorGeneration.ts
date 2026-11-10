@@ -2,21 +2,22 @@ import { useCallback } from "react";
 import { useSettingsStore } from "~/stores/settingsStore";
 import { useGalleryStore } from "~/stores/galleryStore";
 import { doesModelSupportAspectRatio, getModel } from "~/lib/models";
-import { deleteImage as dbDeleteImage, saveImage, saveReferenceImage } from "~/lib/db";
+import { getGenerationBackend } from "~/lib/backend/generation";
+import { saveReferenceImage } from "~/lib/db";
 import { preparePromptBatch } from "~/lib/promptPreparation";
-import { createLoadingPreview, createThumbnailBlob } from "~/lib/imageProcessing";
-import { executeUpscale } from "~/lib/upscaling";
-import { beginGenerationUnloadGuard } from "~/lib/generationUnloadGuard";
+import { createLoadingPreview } from "~/lib/imageProcessing";
 import type { AspectRatio, GalleryItem, Resolution, StoredUpscaler } from "~/types";
-import { useGenerationTask, type GenerationTask } from "~/hooks/useGenerationTask";
+import {
+  useGenerationTask,
+  type ImageGenerationTask,
+  type UpscaleTask,
+} from "~/hooks/useGenerationTask";
 
 export function useEditorGeneration() {
   const models = useSettingsStore((s) => s.models);
   const alwaysImprovePromptEnabled = useSettingsStore((s) => s.alwaysImprovePromptEnabled);
   const replicateKey = useSettingsStore((s) => s.apiKeys.replicate);
   const addItems = useGalleryStore((s) => s.addItems);
-  const updateItem = useGalleryStore((s) => s.updateItem);
-  const isItemCanceled = useGalleryStore((s) => s.isItemCanceled);
   const updatePendingPromptFields = useGalleryStore((s) => s.updatePendingPromptFields);
   const updatePendingPhase = useGalleryStore((s) => s.updatePendingPhase);
   const { runTasks } = useGenerationTask();
@@ -86,9 +87,9 @@ export function useEditorGeneration() {
         itemIds: string[];
         modelId: string;
         modelName: string;
-        provider: GenerationTask["provider"];
-        aspectRatio: GenerationTask["aspectRatio"];
-        resolution: GenerationTask["resolution"];
+        provider: ImageGenerationTask["provider"];
+        aspectRatio: ImageGenerationTask["aspectRatio"];
+        resolution: ImageGenerationTask["resolution"];
         quality: string | null;
         numberOfImages: number;
       }> = [];
@@ -175,19 +176,30 @@ export function useEditorGeneration() {
 
       const displayBasePrompt = basePrompt && sentPrompt !== basePrompt ? basePrompt : undefined;
 
-      const tasks: GenerationTask[] = taskSlots.map((slot, taskIndex) => ({
-        itemIds: slot.itemIds,
-        modelId: slot.modelId,
-        modelName: slot.modelName,
-        provider: slot.provider,
-        prompt: preparedPrompts.prompts[taskIndex] ?? instruction,
-        basePrompt: displayBasePrompt,
-        aspectRatio: slot.aspectRatio,
-        resolution: slot.resolution,
-        quality: slot.quality,
-        numberOfImages: slot.numberOfImages,
-        referenceImages: allReferences,
-      }));
+      const parentGalleryItemIds = allReferences
+        .map((r) => r.sourceGalleryItemId)
+        .filter((id): id is string => !!id);
+      const tasks: ImageGenerationTask[] = taskSlots.map((slot, taskIndex) => {
+        const model = getModel(models, slot.modelId);
+        return {
+          kind: "image",
+          itemIds: slot.itemIds,
+          modelId: slot.modelId,
+          modelName: slot.modelName,
+          provider: slot.provider,
+          prompt: preparedPrompts.prompts[taskIndex] ?? instruction,
+          basePrompt: displayBasePrompt,
+          aspectRatio: slot.aspectRatio,
+          resolution: slot.resolution,
+          quality: slot.quality,
+          numberOfImages: slot.numberOfImages,
+          referenceImageIds: allReferenceIds,
+          parentGalleryItemIds,
+          capabilities: model?.capabilities,
+          schemaMapping: model?.schemaMapping,
+          missingKeyIsFinal: true,
+        };
+      });
 
       updatePendingPromptFields(
         tasks.flatMap((task) =>
@@ -200,10 +212,7 @@ export function useEditorGeneration() {
       );
       updatePendingPhase(taskIds, undefined);
 
-      await runTasks(tasks, {
-        getCanRetry: (error) =>
-          !(error instanceof Error && error.message.startsWith("No API key for ")),
-      });
+      await runTasks(tasks);
     },
     [
       addItems,
@@ -254,64 +263,20 @@ export function useEditorGeneration() {
       addItems([pendingItem]);
       onItemsCreated([itemId]);
 
-      const endUnloadGuard = beginGenerationUnloadGuard();
-      try {
-        const result = await executeUpscale(referenceBlob, upscaler, replicateKey);
-        if (isItemCanceled(itemId)) return;
-
-        const thumbnailBlob = await createThumbnailBlob(result.blob, 400);
-        if (isItemCanceled(itemId)) return;
-
-        const createdAt = Date.now();
-        const metadata = {
-          upscaledFrom: sourceGalleryItemId,
-          upscaler: upscaler.id,
-          upscaleLabel: upscaler.name,
-        };
-
-        await saveImage({
-          id: itemId,
-          originalBlob: result.blob,
-          thumbnailBlob,
-          prompt: instruction,
-          modelId: upscaler.id,
-          modelName,
-          aspectRatio: null,
-          resolution: null,
-          width: result.width,
-          height: result.height,
-          createdAt,
-          referenceImageIds: [referenceId],
-          isFavorite: false,
-          parentGalleryItemIds: sourceGalleryItemId ? [sourceGalleryItemId] : undefined,
-          metadata,
-        });
-        if (isItemCanceled(itemId)) {
-          await dbDeleteImage(itemId);
-          return;
-        }
-
-        updateItem(itemId, {
-          status: "completed",
-          originalUrl: URL.createObjectURL(result.blob),
-          originalMimeType: result.blob.type,
-          thumbnailUrl: URL.createObjectURL(thumbnailBlob),
-          width: result.width,
-          height: result.height,
-          createdAt,
-          isFavorite: false,
-          metadata,
-          parentGalleryItemIds: sourceGalleryItemId ? [sourceGalleryItemId] : undefined,
-        });
-      } catch (err) {
-        if (isItemCanceled(itemId)) return;
-        const message = err instanceof Error ? err.message : "Upscale failed";
-        updateItem(itemId, { status: "failed", error: message, canRetry: false });
-      } finally {
-        endUnloadGuard();
-      }
+      const task: UpscaleTask = {
+        kind: "upscale",
+        itemIds: [itemId],
+        modelId: upscaler.id,
+        modelName,
+        prompt: instruction,
+        referenceImageIds: [referenceId],
+        parentGalleryItemIds: sourceGalleryItemId ? [sourceGalleryItemId] : undefined,
+        upscaler,
+      };
+      // Not counted in requestedOutputCount, which tracks image model requests.
+      await getGenerationBackend().run([task]);
     },
-    [addItems, isItemCanceled, replicateKey, updateItem]
+    [addItems, replicateKey]
   );
 
   return { generateEdit, generateUpscale };

@@ -23,6 +23,12 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // Hosted server API (`pnpm build:server && pnpm start:server`), used by
+      // `VITE_BACKEND=server pnpm dev`. Unused in the default browser-only mode.
+      "/api": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+      },
       "/proxy/replicate": {
         target: "https://api.replicate.com",
         changeOrigin: true,

@@ -56,7 +56,7 @@ app/
 ├── hooks/
 │   ├── useImageGeneration.ts # Gallery generation logic
 │   ├── useEditorGeneration.ts# Editor generation logic
-│   └── useGenerationTask.ts  # Shared task runner: API call + retry + DB save
+│   └── useGenerationTask.ts  # Hands tasks to the generation backend; retry/cancel/dismiss
 ├── lib/
 │   ├── generation.ts         # Core API calls (Google/Replicate)
 │   ├── models.ts             # Capability helpers & ASPECT_RATIOS
@@ -81,7 +81,20 @@ app/
 │   └── logging.ts            # Debug logger
 └── types/
     └── index.ts              # TypeScript types
+server/                       # Self-hosted Node server (Hono + node:sqlite + sharp), see below
 ```
+
+## Self-Hosted Server
+
+Besides the browser-only build (Cloudflare, the default), the app can be built for a single-user Node server that stores everything on disk. The mode is fixed at build time:
+
+- `VITE_BACKEND=server` (`app/lib/backend/mode.ts` → `isServerBackend`): `getRepository()` returns `httpRepository` (`app/lib/backend/http.ts`, REST calls to `/api/*`) instead of IndexedDB, and `settingsStore` persists through `app/lib/backend/settingsStorage.ts` (`GET/PUT /api/settings`, debounced) instead of localStorage. That storage is async, so `routes/home.tsx` holds the app until settings have hydrated. Unset: everything stays in the browser, unchanged.
+- `server/`: `index.ts` (startup; installs the Node `Platform` from `platform.ts` via `setPlatform`), `app.ts` (`createApp`, mounts `routes/*`), `config.ts` (the only place env vars are read), `db.ts` (SQLite schema with `user_version` migrations), `files.ts` (atomic file writes under `DATA_DIR`), `repository.ts` (`SqliteGalleryRepository`, the server implementation of `GalleryRepository`), `settings.ts`, `thumbnails.ts` (sharp port of `createThumbnailBlob`).
+- `pnpm build:server` bundles `server/index.ts` plus the shared app code it imports into `build/hosted/index.mjs` with esbuild (`server/build.mjs`). `sharp` stays external. `pnpm start:server` runs it. `tsconfig.server.json` is part of `pnpm typecheck`.
+- Server code may import from `app/lib` but must not pull in React, zustand stores, or DOM-only modules at runtime; anything environment-specific goes through the `Platform` seam (`app/lib/platform`).
+- Generations run through a `GenerationBackend` (`app/lib/backend/generation.ts`). Hooks build serializable `GenerationTask`s (`app/lib/tasks/types.ts`; references by ID, so every reference must be saved first) and call `getGenerationBackend().run(tasks)`. Both backends execute tasks with the shared `runGenerationTask` (`app/lib/tasks/runTask.ts`: provider call, retries, thumbnail, save, events). `localGenerationBackend` runs in the tab; `remoteGenerationBackend` posts to `/api/jobs` and mirrors `/api/events` (SSE) into `galleryStore`, so jobs survive closing the tab. Server side: `server/jobs.ts` (`JobRunner`: per-provider concurrency `GENERATION_CONCURRENCY`, failed items kept until dismissed, restart recovery: queued and rate-limit-waiting jobs re-run, mid-request ones become retryable "interrupted" failures).
+- Tests: `pnpm test` (vitest; `app/**/*.test.ts`, `server/**/*.test.ts`).
+- When changing `GalleryRepository`, update all three implementations: `indexedDb.ts`, `http.ts`, and `server/repository.ts` (plus its route in `server/routes/`).
 
 ## State Management
 
@@ -357,6 +370,7 @@ Add a new `const X_SYSTEM = ...` to `lib/prompts.ts` and call it via `callTextMo
 
 ## Build-Time Env Vars
 
+- `VITE_BACKEND` — `server` builds the app for the self-hosted server (see Self-Hosted Server). Unset = browser-only storage.
 - `VITE_DEMO_BACKUP_URL` — optional URL to a ZIP backup. When set, the empty gallery shows a "Load demo gallery" button that fetches the archive and runs it through `importFromZip` (`lib/exportImport.ts`). Unset = button hidden.
 
 ## Gotchas

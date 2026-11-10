@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
+    "build:server": "node server/build.mjs",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
+    "start:server": "node --enable-source-maps build/hosted/index.mjs",
     "format": "prettier --write \"app/**/*.{ts,tsx}\"",
+    "test": "vitest run",
     "typecheck": "wrangler types && react-router typegen && tsc -b",
     "wrangler": "wrangler"
   },
@@ -18,6 +21,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@floating-ui/react": "^0.27.19",
     "@google/genai": "^1.35.0",
+    "@hono/node-server": "^2.1.6",
     "@huggingface/transformers": "^3.8.1",
     "@masonry-grid/react": "^1.1.1",
     "@masonry-grid/vanilla": "^1.1.0",
@@ -26,6 +30,7 @@
     "@react-router/serve": "7.15.0",
     "clsx": "^2.1.1",
     "fastest-levenshtein": "^1.0.16",
+    "hono": "^4.13.17",
     "idb": "^8.0.4",
     "isbot": "^5.1.31",
     "jszip": "^3.10.1",
@@ -39,6 +44,7 @@
     "react-router": "7.15.0",
     "recharts": "^3.10.1",
     "replicate": "^1.4.0",
+    "sharp": "^0.35.5",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
@@ -48,9 +54,10 @@
     "@svgr/core": "^8.1.0",
     "@svgr/plugin-jsx": "^8.1.0",
     "@tailwindcss/vite": "^4.1.13",
-    "@types/node": "^22",
+    "@types/node": "^24.19.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "esbuild": "^0.28.2",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^4.2.2",
@@ -59,6 +66,7 @@
     "unplugin-icons": "^23.0.1",
     "vite": "^7.3.2",
     "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.7",
     "wrangler": "^4.158.0"
   }
 }
