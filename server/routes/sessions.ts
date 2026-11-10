@@ -24,13 +24,13 @@ export function sessionRoutes(repository: SqliteGalleryRepository) {
   });
 
   app.get("/by-gallery-item/:galleryItemId", async (c) => {
-    const session = await repository.getSessionByGalleryItemId(c.req.param("galleryItemId"));
-    return session ? c.json(session) : notFound(c, "Session not found");
+    // Lookups by image answer 200 null when there's no session: most images have none,
+    // and a 404 would log a console error on every lightbox open.
+    return c.json(await repository.getSessionByGalleryItemId(c.req.param("galleryItemId")));
   });
 
   app.get("/for-image/:imageId", async (c) => {
-    const session = await repository.findSessionForImage(c.req.param("imageId"));
-    return session ? c.json(session) : notFound(c, "Session not found");
+    return c.json(await repository.findSessionForImage(c.req.param("imageId")));
   });
 
   app.get("/:id", async (c) => {
