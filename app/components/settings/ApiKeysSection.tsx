@@ -1,3 +1,4 @@
+import { isServerBackend } from "~/lib/backend/mode";
 import { Check, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useState } from "react";
 import { useSettingsStore } from "~/stores/settingsStore";
@@ -40,7 +41,11 @@ export function ApiKeysSection() {
       <SettingsSectionHeader
         icon={KeyRound}
         title="API Keys"
-        subtitle="Manage your API keys for different services. Keys are stored locally in your browser."
+        subtitle={`Manage your API keys for different services. Keys are stored ${
+          isServerBackend
+            ? "on this Prismix server, which uses them to run generations"
+            : "locally in your browser"
+        }.`}
       />
 
       <div className="space-y-3 pl-6">
