@@ -21,20 +21,31 @@ export interface ModelCapabilities {
   supportedQualities?: string[];
   supportsNumberOfImages?: boolean;
   maxImagesPerRequest?: number;
-  /** Model-specific options, keyed by `ModelOptionId`. See `lib/modelOptions.ts`. */
+  /** Provider-specific options a model declares. See `lib/modelOptions.ts`. */
   options?: ModelOptionSpecs;
   /** Edits endpoint accepts a transparent markup layer over the first image (no UI yet). */
   supportsMarkupEdits?: boolean;
 }
 
-export type ModelOptionId = "complexity" | "outputFormat" | "gifFrameCount" | "gifFrameDurationMs";
+/** Options a model declares in `capabilities.options`; sent as `GenerationParams.modelOptions`. */
+export type DeclaredModelOptionId =
+  | "complexity"
+  | "outputFormat"
+  | "gifFrameCount"
+  | "gifFrameDurationMs";
+
+/**
+ * Every per-model option. `quality` and `numberOfImages` come from the model's existing
+ * capability fields and are sent as the request's own `quality`/`numberOfImages`.
+ */
+export type ModelOptionId = "quality" | "numberOfImages" | DeclaredModelOptionId;
 
 /** What a given model accepts for an option. Labels and behavior live in the option registry. */
 export type ModelOptionSpec =
   | { kind: "enum"; values: string[] }
   | { kind: "range"; min: number; max: number; step: number; default: number };
 
-export type ModelOptionSpecs = Partial<Record<ModelOptionId, ModelOptionSpec>>;
+export type ModelOptionSpecs = Partial<Record<DeclaredModelOptionId, ModelOptionSpec>>;
 
 /** Option values for one model. A missing key means the option's default. */
 export type ModelOptionValues = Partial<Record<ModelOptionId, string | number>>;

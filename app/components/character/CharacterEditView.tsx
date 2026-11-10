@@ -41,6 +41,7 @@ import { OptionCombobox } from "../ui/OptionCombobox";
 import { useGalleryStore } from "~/stores/galleryStore";
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
+import { resolveModelSettings } from "~/lib/modelOptions";
 import type { CompletedGalleryItem } from "~/types";
 import { useLightboxStore } from "~/stores/lightboxStore";
 import { GalleryHeader } from "../gallery/GalleryHeader";
@@ -258,7 +259,7 @@ export function CharacterEditView() {
   const currentModelSelections = useGenerationStore((s) => s.currentModelSelections);
   const currentAspectRatio = useGenerationStore((s) => s.currentAspectRatio);
   const currentResolution = useGenerationStore((s) => s.currentResolution);
-  const currentQuality = useGenerationStore((s) => s.currentQuality);
+  const currentModelOptions = useGenerationStore((s) => s.currentModelOptions);
 
   const isNew = !id;
   const existing = id ? characters.find((c) => c.id === id) : null;
@@ -400,10 +401,12 @@ export function CharacterEditView() {
 
       const aspectRatio = doesModelSupportAspectRatio(model, "16:9") ? "16:9" : null;
       const resolution = model.capabilities.supportsResolution ? currentResolution : null;
-      const quality = model.capabilities.supportsQuality ? currentQuality : null;
       const usedReferences = model.capabilities.supportsReferenceImages
         ? referenceImages.slice(0, model.capabilities.maxReferenceImages)
         : [];
+      const { quality } = resolveModelSettings(model, currentModelOptions[model.id], {
+        referenceCount: usedReferences.length,
+      });
 
       const startTime = Date.now();
       const endUnloadGuard = beginGenerationUnloadGuard();
@@ -492,7 +495,7 @@ export function CharacterEditView() {
       apiKeys,
       currentAspectRatio,
       currentModelSelections,
-      currentQuality,
+      currentModelOptions,
       currentResolution,
       models,
     ]

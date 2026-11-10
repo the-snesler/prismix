@@ -6,7 +6,14 @@ import { getGenerationBackend } from "~/lib/backend/generation";
 import { saveReferenceImage } from "~/lib/db";
 import { preparePromptBatch } from "~/lib/promptPreparation";
 import { createLoadingPreview } from "~/lib/imageProcessing";
-import type { AspectRatio, GalleryItem, Resolution, StoredUpscaler } from "~/types";
+import { resolveModelSettings } from "~/lib/modelOptions";
+import type {
+  AspectRatio,
+  GalleryItem,
+  ModelOptionValues,
+  Resolution,
+  StoredUpscaler,
+} from "~/types";
 import {
   useGenerationTask,
   type ImageGenerationTask,
@@ -48,8 +55,8 @@ export function useEditorGeneration() {
       modelSelections: Record<string, number>;
       aspectRatio: AspectRatio | null;
       resolution: Resolution;
-      quality: string | null;
-      numberOfImages: number;
+      /** Raw per-model option picks; resolved here against the edit's references. */
+      modelOptions: Record<string, ModelOptionValues>;
       skipAutoImprove?: boolean;
       onItemsCreated: (itemIds: string[]) => void;
       onPromptPrepared?: (prompt: string) => void;
@@ -64,8 +71,7 @@ export function useEditorGeneration() {
         modelSelections,
         aspectRatio,
         resolution,
-        quality,
-        numberOfImages,
+        modelOptions,
         skipAutoImprove,
         onItemsCreated,
         onPromptPrepared,
@@ -91,6 +97,7 @@ export function useEditorGeneration() {
         aspectRatio: ImageGenerationTask["aspectRatio"];
         resolution: ImageGenerationTask["resolution"];
         quality: string | null;
+        modelOptions: ModelOptionValues;
         numberOfImages: number;
       }> = [];
       const pendingItems: GalleryItem[] = [];
@@ -103,11 +110,13 @@ export function useEditorGeneration() {
         const taskResolution = model.capabilities.supportsResolution ? resolution : null;
         const taskAspectRatio =
           aspectRatio && doesModelSupportAspectRatio(model, aspectRatio) ? aspectRatio : null;
-        const taskQuality = model.capabilities.supportsQuality ? quality : null;
-        const maxBatch = model.capabilities.maxImagesPerRequest ?? 1;
-        const perCallImages = model.capabilities.supportsNumberOfImages
-          ? Math.max(1, Math.min(numberOfImages, maxBatch))
-          : 1;
+        const {
+          quality: taskQuality,
+          numberOfImages: perCallImages,
+          modelOptions: taskOptions,
+        } = resolveModelSettings(model, modelOptions[modelId], {
+          referenceCount: allReferences.length,
+        });
 
         for (let i = 0; i < count; i++) {
           const itemIds = Array.from({ length: perCallImages }, () => crypto.randomUUID());
@@ -120,6 +129,7 @@ export function useEditorGeneration() {
             aspectRatio: taskAspectRatio,
             resolution: taskResolution,
             quality: taskQuality,
+            modelOptions: taskOptions,
             numberOfImages: perCallImages,
           });
 
@@ -134,6 +144,7 @@ export function useEditorGeneration() {
               aspectRatio: taskAspectRatio,
               resolution: taskResolution,
               quality: taskQuality,
+              modelOptions: taskOptions,
               referenceImageIds: allReferenceIds,
               isFavorite: false,
               loadingPreview,
@@ -192,6 +203,7 @@ export function useEditorGeneration() {
           aspectRatio: slot.aspectRatio,
           resolution: slot.resolution,
           quality: slot.quality,
+          modelOptions: slot.modelOptions,
           numberOfImages: slot.numberOfImages,
           referenceImageIds: allReferenceIds,
           parentGalleryItemIds,

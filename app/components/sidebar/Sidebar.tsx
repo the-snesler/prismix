@@ -16,8 +16,6 @@ import { ModelList } from "./ModelList";
 import { UpscalerList } from "./UpscalerList";
 import { AspectRatioSection } from "./AspectRatioSection";
 import { ResolutionSection } from "./ResolutionSection";
-import { QualitySection } from "./QualitySection";
-import { NumberOfImagesSection } from "./NumberOfImagesSection";
 import { ModelOptionsSections } from "./ModelOptionsSections";
 import { GenerateButton } from "./GenerateButton";
 import { PromptVariationsToggle } from "./PromptVariationsToggle";
@@ -126,8 +124,6 @@ function GallerySidebarContent() {
         </Accordion.Root>
         <AspectRatioSection />
         <ResolutionSection />
-        <QualitySection />
-        <NumberOfImagesSection />
         <ModelOptionsSections />
       </div>
       <div className="border-border-subtle border-t p-4">
@@ -167,8 +163,7 @@ function EditorSidebarContent() {
       </Accordion.Root>
       <AspectRatioSection />
       <ResolutionSection />
-      <QualitySection />
-      <NumberOfImagesSection />
+      <ModelOptionsSections editing />
     </div>
   );
 }

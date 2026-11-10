@@ -5,10 +5,8 @@ interface GenerationSignatureInput {
   modelSelections: Record<string, number>;
   aspectRatio: AspectRatio | null;
   resolution: Resolution;
-  quality: string | null;
-  /** Resolved options per selected model. */
+  /** Resolved per-model options (including quality and images per call). */
   modelOptions?: Record<string, ModelOptionValues>;
-  numberOfImages: number;
   referenceImages: ReferenceImage[];
   styleId?: string | null;
   characterIds?: string[];
@@ -28,7 +26,6 @@ export function buildGenerationSignature(input: GenerationSignatureInput): strin
     selections: normalizedSelections,
     aspectRatio: input.aspectRatio,
     resolution: input.resolution,
-    quality: input.quality,
     modelOptions: Object.entries(input.modelOptions ?? {})
       .filter(([, values]) => Object.keys(values).length > 0)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -36,7 +33,6 @@ export function buildGenerationSignature(input: GenerationSignatureInput): strin
         modelId,
         Object.entries(values).sort(([a], [b]) => a.localeCompare(b)),
       ]),
-    numberOfImages: input.numberOfImages,
     referenceImageIds: normalizedReferenceIds,
     styleId: input.styleId ?? null,
     characterIds: normalizedCharacterIds,

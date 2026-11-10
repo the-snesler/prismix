@@ -6,22 +6,29 @@ import {
   describeModelOptions,
   getModelOptionControls,
   hasModelOptions,
+  resolveModelOptions,
+  type ModelOptionContext,
   type ModelOptionControlState,
 } from "~/lib/modelOptions";
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
-import type { StoredModel } from "~/types";
+import type { ModelOptionValues, StoredModel } from "~/types";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { OptionHeader, RangeSlider, SegmentedButtons, SteppedSlider } from "./OptionControls";
 
 /**
  * One collapsible section per selected model that has model-specific options, titled with
  * the model's name so it's clear the settings only apply to that part of the request.
+ *
+ * `editing`: the editor always sends its source image as a reference (plus any attached
+ * references); styles and characters don't apply there.
  */
-export function ModelOptionsSections() {
+export function ModelOptionsSections({ editing = false }: { editing?: boolean }) {
   const models = useSettingsStore((s) => s.models);
   const modelSelections = useGenerationStore((s) => s.currentModelSelections);
+  const editorReferenceCount = useGenerationStore((s) => s.currentReferenceImages.length) + 1;
   const draft = useDraftModelOptions();
+  const context = editing ? { referenceCount: editorReferenceCount } : draft.context;
 
   const selected = Object.entries(modelSelections)
     .filter(([, count]) => count > 0)
@@ -33,7 +40,7 @@ export function ModelOptionsSections() {
     <>
       {selected.map((model) => (
         <Accordion.Root key={model.id} defaultValue={[`options:${model.id}`]}>
-          <ModelOptionsSection model={model} draft={draft} />
+          <ModelOptionsSection model={model} raw={draft.rawOptions[model.id]} context={context} />
         </Accordion.Root>
       ))}
     </>
@@ -42,14 +49,18 @@ export function ModelOptionsSections() {
 
 function ModelOptionsSection({
   model,
-  draft: { context, rawOptions, resolved },
+  raw,
+  context,
 }: {
   model: StoredModel;
-  draft: ReturnType<typeof useDraftModelOptions>;
+  raw: ModelOptionValues | undefined;
+  context: ModelOptionContext;
 }) {
   const setModelOption = useGenerationStore((s) => s.setModelOption);
-  const controls = getModelOptionControls(model, rawOptions[model.id], context);
-  const summary = describeModelOptions(resolved[model.id]).join(" · ");
+  const controls = getModelOptionControls(model, raw, context);
+  const summary = describeModelOptions(resolveModelOptions(model, raw, context), { model }).join(
+    " · "
+  );
 
   return (
     <CollapsibleSection
@@ -63,7 +74,7 @@ function ModelOptionsSection({
         )
       }
     >
-      <div className="border-border-subtle space-y-4 border-l pb-1 pl-3">
+      <div className="border-border-subtle mt-4 space-y-4 border-l pb-1 pl-3">
         {controls.map((control) => (
           <ModelOptionControl
             key={control.definition.id}

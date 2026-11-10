@@ -14,9 +14,8 @@ interface GenerationState {
   currentModelSelections: Record<string, number>;
   currentAspectRatio: AspectRatio | null;
   currentResolution: Resolution;
-  currentQuality: string | null;
-  currentNumberOfImages: number;
-  /** Raw per-model option picks, keyed by model ID. Resolve with `resolveModelOptions`. */
+  /** Raw per-model option picks (incl. quality and images per call), keyed by model ID.
+   *  Resolve with `resolveModelOptions` / `resolveModelSettings`. */
   currentModelOptions: Record<string, ModelOptionValues>;
   currentReferenceImages: ReferenceImage[];
   currentStyleId: string | null;
@@ -33,8 +32,6 @@ interface GenerationState {
   setModelCount: (modelId: string, count: number) => void;
   setAspectRatio: (ratio: AspectRatio | null) => void;
   setResolution: (resolution: Resolution) => void;
-  setQuality: (quality: string | null) => void;
-  setNumberOfImages: (count: number) => void;
   /** Set one option for one model; `undefined` clears it back to the default. */
   setModelOption: (
     modelId: string,
@@ -63,8 +60,6 @@ export const DEFAULT_GENERATION_STATE = {
   currentModelSelections: {},
   currentAspectRatio: null,
   currentResolution: "1K" as Resolution,
-  currentQuality: null as string | null,
-  currentNumberOfImages: 1,
   currentModelOptions: {} as Record<string, ModelOptionValues>,
   currentReferenceImages: [],
   currentStyleId: null as string | null,
@@ -100,11 +95,6 @@ export const useGenerationStore = create<GenerationState>()((set) => ({
   setAspectRatio: (currentAspectRatio) => set({ currentAspectRatio }),
 
   setResolution: (currentResolution) => set({ currentResolution }),
-
-  setQuality: (currentQuality) => set({ currentQuality }),
-
-  setNumberOfImages: (currentNumberOfImages) =>
-    set({ currentNumberOfImages: Math.max(1, Math.min(50, currentNumberOfImages)) }),
 
   setModelOption: (modelId, optionId, value) =>
     set((state) => {

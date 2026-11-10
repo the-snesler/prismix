@@ -77,8 +77,7 @@ export function EditorInputBar({ onSourceFile }: EditorInputBarProps) {
   const modelSelections = useGenerationStore((s) => s.currentModelSelections);
   const aspectRatio = useGenerationStore((s) => s.currentAspectRatio);
   const resolution = useGenerationStore((s) => s.currentResolution);
-  const quality = useGenerationStore((s) => s.currentQuality);
-  const numberOfImages = useGenerationStore((s) => s.currentNumberOfImages);
+  const modelOptions = useGenerationStore((s) => s.currentModelOptions);
   const models = useSettingsStore((s) => s.models);
 
   const sourcePrompt = useEditorStore((s) => s.sourcePrompt);
@@ -373,8 +372,7 @@ export function EditorInputBar({ onSourceFile }: EditorInputBarProps) {
         modelSelections,
         aspectRatio,
         resolution,
-        quality,
-        numberOfImages,
+        modelOptions,
         skipAutoImprove: instructionBasePrompt !== null,
         onItemsCreated: (itemIds) => {
           for (const id of itemIds) {
@@ -407,8 +405,7 @@ export function EditorInputBar({ onSourceFile }: EditorInputBarProps) {
     modelSelections,
     aspectRatio,
     resolution,
-    quality,
-    numberOfImages,
+    modelOptions,
     contextInjectionEnabled,
     contextBriefDismissed,
     turns,

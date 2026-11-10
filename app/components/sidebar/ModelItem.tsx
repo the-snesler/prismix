@@ -5,12 +5,8 @@ import type { StoredModel } from "~/types";
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
 import {
-  anyModelSupportsNumberOfImages,
-  anyModelSupportsQuality,
   anyModelSupportsReferenceImages,
   getAspectRatioIntersection,
-  getMaxImagesPerRequest,
-  getQualityIntersection,
   isSoleArbitraryAspectRatioModel,
 } from "~/lib/models";
 import { PROVIDERS } from "~/lib/providers";
@@ -45,23 +41,6 @@ export function ModelItem({ model, count }: ModelItemProps) {
       !getAspectRatioIntersection(models, selectedIds).includes(generationState.currentAspectRatio)
     ) {
       generationState.setAspectRatio(null);
-    }
-
-    if (
-      generationState.currentQuality &&
-      (!anyModelSupportsQuality(models, selectedIds) ||
-        !getQualityIntersection(models, selectedIds).includes(generationState.currentQuality))
-    ) {
-      generationState.setQuality(null);
-    }
-
-    if (anyModelSupportsNumberOfImages(models, selectedIds)) {
-      const maxBatch = getMaxImagesPerRequest(models, selectedIds);
-      if (generationState.currentNumberOfImages > maxBatch) {
-        generationState.setNumberOfImages(maxBatch);
-      }
-    } else if (generationState.currentNumberOfImages > 1) {
-      generationState.setNumberOfImages(1);
     }
   };
 

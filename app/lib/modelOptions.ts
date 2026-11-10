@@ -1,4 +1,5 @@
 import type {
+  DeclaredModelOptionId,
   ModelOptionId,
   ModelOptionSpec,
   ModelOptionValues,
@@ -6,24 +7,27 @@ import type {
   StoredModel,
   StoredStyle,
 } from "~/types";
-import { getStrictReferenceImageLimit } from "./models";
+import { QUALITIES, getStrictReferenceImageLimit } from "./models";
 import { countKeptReferences } from "./referencePrecedence";
 
 /**
- * Model-specific generation options.
+ * Per-model generation options.
  *
- * A model opts in by declaring `capabilities.options[id]` (which values/range it accepts).
- * This registry owns everything else: labels, control type, cost relevance, and how
- * options depend on each other and on the rest of the request.
+ * Each selected model that supports any of these gets its own sidebar section. Most
+ * options are declared by the model in `capabilities.options[id]`; `quality` and
+ * `numberOfImages` are derived from the model's existing capability fields. This registry
+ * owns everything else: labels, control type, cost relevance, and how options depend on
+ * each other and on the rest of the request.
  *
  * Raw values (what the user picked, per model) are never sent directly. They go through
- * `resolveModelOptions`, which drops unsupported/hidden/unavailable options and clamps
- * ranges. The resolved values are what get sent, saved, hashed, and priced.
+ * `resolveModelOptions` (or `resolveModelSettings`), which drops unsupported, hidden and
+ * unavailable options and clamps ranges. The resolved values are what get sent, saved,
+ * hashed, and priced.
  */
 
 /** Request facts outside the option values that can make an option unavailable. */
 export interface ModelOptionContext {
-  /** References that will be sent (manual + style + character). */
+  /** References that will be sent (manual + style + character, or the editor's source). */
   referenceCount: number;
 }
 
@@ -48,12 +52,25 @@ export function getDraftModelOptionContext(input: {
   };
 }
 
+type RangeSpec = Extract<ModelOptionSpec, { kind: "range" }>;
+
 interface BaseOptionDefinition {
   id: ModelOptionId;
   label: string;
-  /** Include this option when matching past generations for cost estimates. */
+  /**
+   * Include this option when matching past generations for cost estimates. Options with
+   * `requestField` are stored outside `modelOptions` and priced by their own field
+   * (`GenerationCostPreview` ranks quality separately).
+   */
   affectsCost: boolean;
-  /** Only shown/sent when this returns true for the values resolved so far. */
+  /**
+   * Sent and saved as the request's own field of this name rather than inside
+   * `modelOptions`. See `resolveModelSettings`.
+   */
+  requestField?: boolean;
+  /** What this model accepts. Defaults to `capabilities.options[id]`. */
+  getSpec?: (model: StoredModel) => ModelOptionSpec | undefined;
+  /** Only shown/sent when this returns true for the model's other resolved values. */
   visibleWhen?: (values: ModelOptionValues) => boolean;
   /** Non-null when the option can't be used for this request; the UI shows the reason. */
   unavailableReason?: (context: ModelOptionContext) => string | null;
@@ -75,14 +92,61 @@ export interface RangeOptionDefinition extends BaseOptionDefinition {
   kind: "range";
   control: "slider";
   formatValue: (value: number) => string;
+  /** Leave out of summaries while the value equals the model's default. */
+  quietAtDefault?: boolean;
 }
 
 export type ModelOptionDefinition = EnumOptionDefinition | RangeOptionDefinition;
 
 const isGif = (values: ModelOptionValues) => values.outputFormat === "gif";
 
-/** Display and resolution order. Options that others depend on must come first. */
+/** Known qualities in `QUALITIES` order, then any model-specific values in their own order. */
+function orderQualities(values: string[]): string[] {
+  const rank = (value: string) => {
+    const index = (QUALITIES as readonly string[]).indexOf(value);
+    return index < 0 ? QUALITIES.length : index;
+  };
+  return values
+    .map((value, index) => ({ value, index }))
+    .sort((a, b) => rank(a.value) - rank(b.value) || a.index - b.index)
+    .map(({ value }) => value);
+}
+
+/** Display order. Visibility is resolved separately, so dependencies can come later. */
 export const MODEL_OPTION_DEFINITIONS: readonly ModelOptionDefinition[] = [
+  {
+    id: "quality",
+    kind: "enum",
+    control: "stepped",
+    label: "Quality",
+    affectsCost: true,
+    requestField: true,
+    valueLabels: { low: "Low", medium: "Medium", high: "High", xhigh: "XHigh", max: "Max" },
+    getSpec: ({ capabilities }) => {
+      if (!capabilities.supportsQuality) return undefined;
+      const values = orderQualities(capabilities.supportedQualities ?? ["low", "medium", "high"]);
+      return values.length > 0 ? { kind: "enum", values } : undefined;
+    },
+  },
+  {
+    id: "numberOfImages",
+    kind: "range",
+    control: "slider",
+    label: "Images / call",
+    // The estimate is per image, multiplied by the number of outputs.
+    affectsCost: false,
+    requestField: true,
+    quietAtDefault: true,
+    formatValue: (value) => `${value} / call`,
+    getSpec: ({ capabilities }) => {
+      const max = capabilities.maxImagesPerRequest ?? 1;
+      return capabilities.supportsNumberOfImages && max > 1
+        ? { kind: "range", min: 1, max, step: 1, default: 1 }
+        : undefined;
+    },
+    // The API requires n = 1 for SVG.
+    visibleWhen: (values) => values.outputFormat !== "svg",
+  },
   {
     id: "complexity",
     kind: "enum",
@@ -104,7 +168,9 @@ export const MODEL_OPTION_DEFINITIONS: readonly ModelOptionDefinition[] = [
     valueNotes: { svg: "SVG output returns one image per call." },
     // Only the generations endpoint can return SVG/GIF; references route to edits.
     unavailableReason: ({ referenceCount }) =>
-      referenceCount > 0 ? "SVG and GIF output aren't available with reference images." : null,
+      referenceCount > 0
+        ? "SVG and GIF aren't available when editing or using reference images."
+        : null,
   },
   {
     id: "gifFrameCount",
@@ -134,24 +200,82 @@ function specFor(
   model: StoredModel,
   definition: ModelOptionDefinition
 ): ModelOptionSpec | undefined {
-  const spec = model.capabilities.options?.[definition.id];
+  const spec = definition.getSpec
+    ? definition.getSpec(model)
+    : model.capabilities.options?.[definition.id as DeclaredModelOptionId];
   return spec?.kind === definition.kind ? spec : undefined;
 }
 
-function clampToRange(value: number, spec: Extract<ModelOptionSpec, { kind: "range" }>) {
+function clampToRange(value: number, spec: RangeSpec) {
   const snapped = spec.min + Math.round((value - spec.min) / spec.step) * spec.step;
   return Math.min(spec.max, Math.max(spec.min, snapped));
+}
+
+/** The value a control shows: the raw pick if valid, otherwise the effective default. */
+function displayValue(
+  definition: ModelOptionDefinition,
+  spec: ModelOptionSpec,
+  rawValue: string | number | undefined
+): string | number | null {
+  if (spec.kind === "range") {
+    return clampToRange(typeof rawValue === "number" ? rawValue : spec.default, spec);
+  }
+  if (typeof rawValue === "string" && spec.values.includes(rawValue)) return rawValue;
+  return (definition as EnumOptionDefinition).defaultValue ?? null;
+}
+
+/** Valid, available values, before visibility rules (which can depend on each other). */
+function resolveIgnoringVisibility(
+  model: StoredModel,
+  raw: ModelOptionValues | undefined,
+  context: ModelOptionContext
+): ModelOptionValues {
+  const values: ModelOptionValues = {};
+  for (const definition of MODEL_OPTION_DEFINITIONS) {
+    const spec = specFor(model, definition);
+    if (!spec || definition.unavailableReason?.(context)) continue;
+    const value = displayValue(definition, spec, raw?.[definition.id]);
+    // Enum defaults (e.g. "standard") are the same as omitting the option.
+    if (value !== null && value !== (definition as EnumOptionDefinition).defaultValue) {
+      values[definition.id] = value;
+    }
+  }
+  return values;
+}
+
+/** Drop options hidden by other values, repeating until hiding one hides no others. */
+function applyVisibility(values: ModelOptionValues): ModelOptionValues {
+  let current = values;
+  for (;;) {
+    const next: ModelOptionValues = {};
+    for (const definition of MODEL_OPTION_DEFINITIONS) {
+      const value = current[definition.id];
+      if (value === undefined) continue;
+      if (definition.visibleWhen && !definition.visibleWhen(current)) continue;
+      next[definition.id] = value;
+    }
+    if (Object.keys(next).length === Object.keys(current).length) return next;
+    current = next;
+  }
+}
+
+/** Values actually used for this model. Missing keys mean "omit / API default". */
+export function resolveModelOptions(
+  model: StoredModel,
+  raw: ModelOptionValues | undefined,
+  context: ModelOptionContext
+): ModelOptionValues {
+  return applyVisibility(resolveIgnoringVisibility(model, raw, context));
 }
 
 export interface ModelOptionControlState {
   definition: ModelOptionDefinition;
   spec: ModelOptionSpec;
-  /** Value to show in the control (raw if valid, otherwise the effective default). */
   value: string | number | null;
   unavailableReason: string | null;
 }
 
-/** The options to render for a model, in order, given its raw values. */
+/** The options to render for a model, in display order, given its raw values. */
 export function getModelOptionControls(
   model: StoredModel,
   raw: ModelOptionValues | undefined,
@@ -164,60 +288,15 @@ export function getModelOptionControls(
     const spec = specFor(model, definition);
     if (!spec) continue;
     if (definition.visibleWhen && !definition.visibleWhen(resolved)) continue;
-
-    const rawValue = raw?.[definition.id];
-    let value: string | number | null;
-    if (spec.kind === "range") {
-      value = clampToRange(typeof rawValue === "number" ? rawValue : spec.default, spec);
-    } else {
-      const enumDefinition = definition as EnumOptionDefinition;
-      value =
-        typeof rawValue === "string" && spec.values.includes(rawValue)
-          ? rawValue
-          : (enumDefinition.defaultValue ?? null);
-    }
-
     controls.push({
       definition,
       spec,
-      value,
+      value: displayValue(definition, spec, raw?.[definition.id]),
       unavailableReason: definition.unavailableReason?.(context) ?? null,
     });
   }
 
   return controls;
-}
-
-/** Values actually sent for this model. Missing keys mean "omit / API default". */
-export function resolveModelOptions(
-  model: StoredModel,
-  raw: ModelOptionValues | undefined,
-  context: ModelOptionContext
-): ModelOptionValues {
-  const resolved: ModelOptionValues = {};
-
-  for (const definition of MODEL_OPTION_DEFINITIONS) {
-    const spec = specFor(model, definition);
-    if (!spec) continue;
-    if (definition.unavailableReason?.(context)) continue;
-    if (definition.visibleWhen && !definition.visibleWhen(resolved)) continue;
-
-    const rawValue = raw?.[definition.id];
-    if (spec.kind === "range") {
-      resolved[definition.id] = clampToRange(
-        typeof rawValue === "number" ? rawValue : spec.default,
-        spec
-      );
-    } else if (
-      typeof rawValue === "string" &&
-      spec.values.includes(rawValue) &&
-      rawValue !== (definition as EnumOptionDefinition).defaultValue
-    ) {
-      resolved[definition.id] = rawValue;
-    }
-  }
-
-  return resolved;
 }
 
 /** Resolve options for every selected model. Models without options map to `{}`. */
@@ -236,18 +315,52 @@ export function resolveSelectedModelOptions(
   return result;
 }
 
+/** What one task for this model sends: request fields plus the provider-specific rest. */
+export interface ModelSettings {
+  quality: string | null;
+  numberOfImages: number;
+  /** Declared options only; this is what's sent as `modelOptions` and saved on images. */
+  modelOptions: ModelOptionValues;
+}
+
+/** Split resolved values into the request's own fields and `modelOptions`. */
+export function toModelSettings(resolved: ModelOptionValues | undefined): ModelSettings {
+  const modelOptions: ModelOptionValues = {};
+  for (const definition of MODEL_OPTION_DEFINITIONS) {
+    const value = resolved?.[definition.id];
+    if (value !== undefined && !definition.requestField) modelOptions[definition.id] = value;
+  }
+  return {
+    quality: typeof resolved?.quality === "string" ? resolved.quality : null,
+    numberOfImages: typeof resolved?.numberOfImages === "number" ? resolved.numberOfImages : 1,
+    modelOptions,
+  };
+}
+
+export function resolveModelSettings(
+  model: StoredModel,
+  raw: ModelOptionValues | undefined,
+  context: ModelOptionContext
+): ModelSettings {
+  return toModelSettings(resolveModelOptions(model, raw, context));
+}
+
+/** Rebuild raw per-model values from a saved image (for "reuse prompt"). */
+export function modelOptionsFromSaved(saved: {
+  quality?: string | null;
+  modelOptions?: ModelOptionValues;
+}): ModelOptionValues {
+  return { ...saved.modelOptions, ...(saved.quality ? { quality: saved.quality } : {}) };
+}
+
 export function hasModelOptions(model: StoredModel): boolean {
   return MODEL_OPTION_DEFINITIONS.some((definition) => specFor(model, definition));
 }
 
-/** Per-call image cap imposed by option values (e.g. SVG is one image per request). */
-export function getOptionImagesPerRequestLimit(values: ModelOptionValues): number {
-  return values.outputFormat === "svg" ? 1 : Infinity;
-}
-
 /**
- * Distance between a past generation's options and the requested ones, over options with
- * `affectsCost`. 0 = same cost-relevant settings; each differing option adds up to 1.
+ * Distance between a past generation's `modelOptions` and the requested ones, over
+ * options with `affectsCost` (excluding `requestField` options, which callers rank
+ * themselves). 0 = same cost-relevant settings; each differing option adds up to 1.
  */
 export function modelOptionsCostDistance(
   model: StoredModel | undefined,
@@ -256,7 +369,7 @@ export function modelOptionsCostDistance(
 ): number {
   let distance = 0;
   for (const definition of MODEL_OPTION_DEFINITIONS) {
-    if (!definition.affectsCost) continue;
+    if (!definition.affectsCost || definition.requestField) continue;
     const fallback = definition.kind === "enum" ? definition.defaultValue : undefined;
     const a = actual?.[definition.id] ?? fallback;
     const b = requested[definition.id] ?? fallback;
@@ -273,9 +386,11 @@ export function modelOptionsCostDistance(
 }
 
 /**
- * Human-readable values, e.g. ["GIF", "9 frames"]. Omitted options are skipped unless
- * `costOnly` is set, in which case options supported by `model` with a named default
- * (e.g. "Standard") are spelled out so cost comparisons are explicit.
+ * Human-readable values, e.g. ["High quality", "GIF", "9 frames"].
+ *
+ * With `costOnly`, only `modelOptions` entries with `affectsCost` are described, and
+ * options `model` supports that have a named default (e.g. "Standard") are spelled out
+ * so cost comparisons are explicit.
  */
 export function describeModelOptions(
   values: ModelOptionValues | undefined,
@@ -283,20 +398,18 @@ export function describeModelOptions(
 ): string[] {
   const parts: string[] = [];
   for (const definition of MODEL_OPTION_DEFINITIONS) {
-    if (costOnly && !definition.affectsCost) continue;
+    if (costOnly && (!definition.affectsCost || definition.requestField)) continue;
+    const spec = model ? specFor(model, definition) : undefined;
     let value = values?.[definition.id];
-    if (
-      value === undefined &&
-      costOnly &&
-      definition.kind === "enum" &&
-      model &&
-      specFor(model, definition)
-    ) {
+    if (value === undefined && costOnly && definition.kind === "enum" && spec) {
       value = definition.defaultValue;
     }
     if (value === undefined) continue;
+
     if (definition.kind === "range") {
-      if (typeof value === "number") parts.push(definition.formatValue(value));
+      if (typeof value !== "number") continue;
+      if (definition.quietAtDefault && spec?.kind === "range" && value === spec.default) continue;
+      parts.push(definition.formatValue(value));
     } else {
       const label = definition.valueLabels[String(value)] ?? String(value);
       parts.push(

@@ -10,8 +10,8 @@ import { doesModelSupportAspectRatio, getModel, getStrictReferenceImageLimit } f
 import { preparePromptBatch } from "~/lib/promptPreparation";
 import {
   getDraftModelOptionContext,
-  getOptionImagesPerRequestLimit,
   resolveSelectedModelOptions,
+  toModelSettings,
 } from "~/lib/modelOptions";
 import type { GalleryItem, ModelOptionValues } from "~/types";
 import { useGenerationTask, type ImageGenerationTask } from "~/hooks/useGenerationTask";
@@ -24,8 +24,6 @@ export function useImageGeneration() {
   const modelSelections = useGenerationStore((s) => s.currentModelSelections);
   const aspectRatio = useGenerationStore((s) => s.currentAspectRatio);
   const resolution = useGenerationStore((s) => s.currentResolution);
-  const quality = useGenerationStore((s) => s.currentQuality);
-  const numberOfImages = useGenerationStore((s) => s.currentNumberOfImages);
   const referenceImages = useGenerationStore((s) => s.currentReferenceImages);
   const startGeneration = useGenerationStore((s) => s.startGeneration);
   const finishGeneration = useGenerationStore((s) => s.finishGeneration);
@@ -79,9 +77,7 @@ export function useImageGeneration() {
       modelSelections,
       aspectRatio,
       resolution,
-      quality,
       modelOptions,
-      numberOfImages,
       referenceImages,
       styleId: currentStyleId,
       characterIds: currentCharacterIds,
@@ -122,15 +118,11 @@ export function useImageGeneration() {
       const taskResolution = model.capabilities.supportsResolution ? resolution : null;
       const taskAspectRatio =
         aspectRatio && doesModelSupportAspectRatio(model, aspectRatio) ? aspectRatio : null;
-      const taskQuality = model.capabilities.supportsQuality ? quality : null;
-      const taskOptions = modelOptions[modelId] ?? {};
-      const maxBatch = Math.min(
-        model.capabilities.maxImagesPerRequest ?? 1,
-        getOptionImagesPerRequestLimit(taskOptions)
-      );
-      const perCallImages = model.capabilities.supportsNumberOfImages
-        ? Math.max(1, Math.min(numberOfImages, maxBatch))
-        : 1;
+      const {
+        quality: taskQuality,
+        numberOfImages: perCallImages,
+        modelOptions: taskOptions,
+      } = toModelSettings(modelOptions[modelId]);
 
       for (let i = 0; i < count; i++) {
         const itemIds = Array.from({ length: perCallImages }, () => crypto.randomUUID());
@@ -184,9 +176,7 @@ export function useImageGeneration() {
       modelSelections,
       aspectRatio,
       resolution,
-      quality,
       modelOptions,
-      numberOfImages,
       referenceImages,
       styleId: currentStyleId,
       characterIds: currentCharacterIds,
@@ -298,8 +288,6 @@ export function useImageGeneration() {
     modelSelections,
     aspectRatio,
     resolution,
-    quality,
-    numberOfImages,
     referenceImages,
     models,
     startGeneration,

@@ -12,8 +12,8 @@ import {
 } from "~/lib/models";
 import {
   describeModelOptions,
-  getOptionImagesPerRequestLimit,
   modelOptionsCostDistance,
+  toModelSettings,
 } from "~/lib/modelOptions";
 import { type ImageStatRecord } from "~/lib/stats";
 import { formatUsd, getAspectRatioValue } from "~/lib/util";
@@ -62,10 +62,8 @@ interface Props {
   modelSelections: Record<string, number>;
   aspectRatio: AspectRatio | null;
   resolution: Resolution;
-  quality: string | null;
-  /** Resolved options per selected model. */
+  /** Resolved options per selected model (including quality and images per call). */
   modelOptions: Record<string, ModelOptionValues>;
-  numberOfImages: number;
 }
 
 export function GenerationCostPreview({
@@ -73,9 +71,7 @@ export function GenerationCostPreview({
   modelSelections,
   aspectRatio,
   resolution,
-  quality,
   modelOptions,
-  numberOfImages,
 }: Props) {
   const totalCount = useGalleryStore((s) => s.totalCount);
   const [records, setRecords] = useState<ImageStatRecord[] | null>(null);
@@ -105,24 +101,16 @@ export function GenerationCostPreview({
         .map(([modelId, count]) => {
           const model = models.find((m) => m.id === modelId);
           const taskResolution = model?.capabilities.supportsResolution ? resolution : null;
-          const taskQuality = model?.capabilities.supportsQuality ? quality : null;
           const taskAspectRatio =
             model && aspectRatio && doesModelSupportAspectRatio(model, aspectRatio)
               ? aspectRatio
               : null;
-          const taskOptions = modelOptions[modelId] ?? {};
-          const outputs =
-            count *
-            (model?.capabilities.supportsNumberOfImages
-              ? Math.max(
-                  1,
-                  Math.min(
-                    numberOfImages,
-                    model.capabilities.maxImagesPerRequest ?? 1,
-                    getOptionImagesPerRequestLimit(taskOptions)
-                  )
-                )
-              : 1);
+          const {
+            quality: taskQuality,
+            numberOfImages: perCallImages,
+            modelOptions: taskOptions,
+          } = toModelSettings(modelOptions[modelId]);
+          const outputs = count * perCallImages;
           const candidates = (records ?? []).filter(
             (r) =>
               r.modelId === modelId &&
@@ -182,16 +170,7 @@ export function GenerationCostPreview({
             matchedSettings,
           };
         }),
-    [
-      records,
-      models,
-      modelSelections,
-      aspectRatio,
-      resolution,
-      quality,
-      modelOptions,
-      numberOfImages,
-    ]
+    [records, models, modelSelections, aspectRatio, resolution, modelOptions]
   );
 
   if (!estimates.length) return null;

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { getReferenceImagesByIds } from "~/lib/db";
+import { modelOptionsFromSaved } from "~/lib/modelOptions";
 import { hasVariationSections } from "~/lib/promptVariations";
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
@@ -37,9 +38,10 @@ function useReuseGalleryItem(sent: boolean) {
         currentModelSelections: { [item.modelId]: 1 },
         currentAspectRatio: item.aspectRatio,
         currentResolution: item.resolution ?? "1K",
-        currentQuality: item.quality ?? null,
-        currentModelOptions: item.modelOptions ? { [item.modelId]: item.modelOptions } : {},
-        currentNumberOfImages: 1,
+        currentModelOptions: {
+          ...useGenerationStore.getState().currentModelOptions,
+          [item.modelId]: modelOptionsFromSaved(item),
+        },
       });
     },
     [sent]
