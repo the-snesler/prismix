@@ -13,6 +13,8 @@ setPlatform(createNodePlatform(deps.db, config));
 
 // Requeue or fail the jobs a previous run left behind (needs the platform).
 deps.jobs.recover();
+// Resume imports that were running, and drop stale uploads.
+void deps.uploads.recover().catch((error) => console.error("Upload recovery failed:", error));
 
 const app = createApp(deps);
 

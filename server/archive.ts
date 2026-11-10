@@ -98,11 +98,24 @@ async function readEntry(zip: yauzl.ZipFile, entry: yauzl.Entry, limit: number):
   return Buffer.concat(chunks);
 }
 
+export interface ImportArchiveOptions {
+  /** Called after each image or reference entry with (done, total). */
+  onProgress?: (done: number, total: number) => void;
+  /** Stops between entries; what was already imported stays. */
+  signal?: AbortSignal;
+}
+
 /**
  * Import an archive from a file on disk. Existing image and reference IDs are
- * skipped; characters and custom styles merge into the stored settings by ID.
+ * skipped (so re-running an interrupted import is safe); characters and custom
+ * styles merge into the stored settings by ID.
  */
-export async function importArchive(zipPath: string, deps: ArchiveDeps): Promise<ImportResult> {
+export async function importArchive(
+  zipPath: string,
+  deps: ArchiveDeps,
+  options: ImportArchiveOptions = {}
+): Promise<ImportResult> {
+  const { onProgress, signal } = options;
   const { repository, settings } = deps;
   let zip: yauzl.ZipFile;
   try {
@@ -138,19 +151,32 @@ export async function importArchive(zipPath: string, deps: ArchiveDeps): Promise
       throw new ArchiveError(error instanceof Error ? error.message : String(error));
     }
 
+    const referencesText = await readText(REFERENCES_MANIFEST_FILE);
+    const references = referencesText !== null ? parseReferencesManifest(referencesText) : null;
+
     const result = emptyImportResult();
-    result.failed += parsed.invalid;
+    result.failed += parsed.invalid + (references?.invalid ?? 0);
+    const total = parsed.entries.length + (references?.entries.length ?? 0);
+    let done = 0;
+    const step = () => {
+      done++;
+      onProgress?.(done, total);
+    };
+    onProgress?.(0, total);
 
     const existingImages = await repository.getExistingImageIds();
     for (const entry of parsed.entries) {
+      signal?.throwIfAborted();
       if (existingImages.has(entry.id)) {
         result.skipped++;
+        step();
         continue;
       }
       try {
         const originalBlob = await readBlob(entry.filename);
         if (!originalBlob) {
           result.failed++;
+          step();
           continue;
         }
         const thumbnailBlob = await deps.createThumbnail(originalBlob);
@@ -165,22 +191,23 @@ export async function importArchive(zipPath: string, deps: ArchiveDeps): Promise
         console.warn(`Import: skipping image ${entry.id}:`, error);
         result.failed++;
       }
+      step();
     }
 
-    const referencesText = await readText(REFERENCES_MANIFEST_FILE);
-    if (referencesText !== null) {
-      const references = parseReferencesManifest(referencesText);
-      result.failed += references.invalid;
+    if (references) {
       const existingReferences = await repository.getExistingReferenceImageIds();
       for (const entry of references.entries) {
+        signal?.throwIfAborted();
         if (existingReferences.has(entry.id)) {
           result.skipped++;
+          step();
           continue;
         }
         try {
           const blob = await readBlob(entry.filename);
           if (!blob) {
             result.failed++;
+            step();
             continue;
           }
           await repository.saveReferenceImage({
@@ -195,6 +222,7 @@ export async function importArchive(zipPath: string, deps: ArchiveDeps): Promise
           console.warn(`Import: skipping reference ${entry.id}:`, error);
           result.failed++;
         }
+        step();
       }
     }
 

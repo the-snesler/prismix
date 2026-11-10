@@ -1,10 +1,48 @@
-import { Archive, Download, Loader2, Upload } from "lucide-react";
+import { Archive, Download, Loader2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getImageCount } from "~/lib/db";
-import { exportAllImages, importFromZip } from "~/lib/exportImport";
+import { exportAllImages, importFromZip, type ImportProgress } from "~/lib/exportImport";
+import { isServerBackend } from "~/lib/backend/mode";
 import { useGalleryStore } from "~/stores/galleryStore";
 import { useSettingsStore } from "~/stores/settingsStore";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  return `${Math.ceil(bytes / 1024)} KB`;
+}
+
+function ImportProgressBar({ progress }: { progress: ImportProgress }) {
+  const fraction = progress.total > 0 ? Math.min(1, progress.loaded / progress.total) : 0;
+  const label =
+    progress.phase === "uploading"
+      ? `Uploading ${formatBytes(progress.loaded)} of ${formatBytes(progress.total)}`
+      : progress.total > 0
+        ? `Importing ${progress.loaded.toLocaleString()} of ${progress.total.toLocaleString()} items`
+        : "Reading archive...";
+  return (
+    <div className="max-w-md space-y-1">
+      <div
+        className="bg-surface-overlay h-1.5 overflow-hidden rounded-full"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(fraction * 100)}
+      >
+        <div
+          className="h-full rounded-full bg-purple-500 transition-[width] duration-300"
+          style={{ width: `${fraction * 100}%` }}
+        />
+      </div>
+      <p className="text-text-tertiary flex justify-between gap-2 text-xs tabular-nums">
+        <span>{label}</span>
+        <span>{Math.floor(fraction * 100)}%</span>
+      </p>
+    </div>
+  );
+}
 
 export function DataSection() {
   const loadImages = useGalleryStore((s) => s.loadImages);
@@ -15,6 +53,8 @@ export function DataSection() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ImportProgress | null>(null);
+  const importAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     getImageCount().then(setImageCount);
@@ -39,8 +79,14 @@ export function DataSection() {
 
     setImporting(true);
     setStatus(null);
+    setProgress(null);
+    const controller = new AbortController();
+    importAbortRef.current = controller;
     try {
-      const result = await importFromZip(file);
+      const result = await importFromZip(file, {
+        onProgress: setProgress,
+        signal: controller.signal,
+      });
       const parts = [`${result.imported} generations imported`];
       if (result.referencesImported > 0) {
         parts.push(`${result.referencesImported} references imported`);
@@ -64,8 +110,16 @@ export function DataSection() {
         setImageCount(await getImageCount());
       }
     } catch (error) {
-      setStatus(`Import failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      if (controller.signal.aborted) {
+        setStatus("Import canceled. Anything already imported was kept.");
+        await loadImages();
+        setImageCount(await getImageCount());
+      } else {
+        setStatus(`Import failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
     } finally {
+      importAbortRef.current = null;
+      setProgress(null);
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -109,6 +163,17 @@ export function DataSection() {
             {importing ? "Importing..." : "Import from ZIP"}
           </button>
 
+          {importing && isServerBackend && (
+            <button
+              type="button"
+              onClick={() => importAbortRef.current?.abort()}
+              className="text-text-secondary hover:bg-surface-interactive flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+              Cancel
+            </button>
+          )}
+
           <input
             ref={fileInputRef}
             type="file"
@@ -118,6 +183,7 @@ export function DataSection() {
           />
         </div>
 
+        {importing && progress && <ImportProgressBar progress={progress} />}
         {status && <p className="text-text-tertiary text-xs">{status}</p>}
       </div>
     </section>

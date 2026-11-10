@@ -55,7 +55,7 @@ wrangler deploy
 
 Prismix can also run as a single-user server that keeps your gallery, reference images, and settings on disk instead of in the browser. Images live under `/data` (SQLite plus image files), so they survive browser resets and follow you across devices. Generations run on the server, so they finish even if you close the tab.
 
-To move a gallery between the browser-only app and a server, use **Settings → Data**: export a zip from one and import it into the other. Both use the same archive format.
+To move a gallery between the browser-only app and a server, use **Settings → Data**: export a zip from one and import it into the other. Both use the same archive format. The server build uploads archives in small resumable chunks (8 MB, halved automatically if a proxy rejects them as too large), so multi-gigabyte imports work behind reverse proxies and survive dropped connections; the import itself then runs on the server, and the page shows its progress.
 
 ```bash
 docker compose up -d --build   # http://127.0.0.1:8787
