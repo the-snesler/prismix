@@ -5,10 +5,19 @@ export interface OpenAIImageModelConfig {
   sizeMode: "fixed" | "arbitrary";
 }
 
+/**
+ * `background: "transparent"`, on generations and edits. Accepted by GPT Image 1.5, 2.5 and
+ * 2.6; plain `gpt-image-2` rejects it ("Transparent background is not supported for this model").
+ */
+export const TRANSPARENT_BACKGROUND_OPTIONS = {
+  background: { kind: "enum", values: ["transparent"] },
+} satisfies ModelOptionSpecs;
+
 // https://developers.openai.com/api/docs/guides/image-generation (GPT Image 2.6 section)
 const GPT_IMAGE_2_6_OPTIONS = {
   complexity: { kind: "enum", values: ["low", "medium", "high"] },
   outputFormat: { kind: "enum", values: ["standard", "svg", "gif"] },
+  ...TRANSPARENT_BACKGROUND_OPTIONS,
   gifFrameCount: { kind: "range", min: 2, max: 64, step: 1, default: 9 },
   gifFrameDurationMs: { kind: "range", min: 20, max: 2000, step: 10, default: 200 },
 } satisfies ModelOptionSpecs;
@@ -102,6 +111,7 @@ export const OPENAI_IMAGE_MODELS = [
       supportsNumberOfImages: true,
       maxImagesPerRequest: 10,
       supportsMarkupEdits: true,
+      options: TRANSPARENT_BACKGROUND_OPTIONS,
     },
     config: { sizeMode: "arbitrary" },
     pricing: {
@@ -136,6 +146,7 @@ export const OPENAI_IMAGE_MODELS = [
       supportsNumberOfImages: true,
       maxImagesPerRequest: 10,
       supportsMarkupEdits: true,
+      options: TRANSPARENT_BACKGROUND_OPTIONS,
     },
     config: { sizeMode: "arbitrary" },
     pricing: {

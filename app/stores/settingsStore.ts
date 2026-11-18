@@ -13,6 +13,7 @@ import {
 } from "~/lib/builtInModels";
 import { BUILT_IN_STYLES, mergeWithBuiltInStyles } from "~/lib/builtInStyles";
 import { hasProviderAccess } from "~/lib/providers";
+import { inferOpenAiImageCapabilities } from "~/lib/providers/openai";
 import {
   deleteReferenceImagesByIds,
   garbageCollectReferences,
@@ -445,7 +446,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "studio-settings",
-      version: 26,
+      version: 27,
       // Server builds keep settings on the server (async; see the hydration gate in
       // routes/home.tsx). Otherwise localStorage, zustand's default.
       storage: createJSONStorage(() =>
@@ -568,6 +569,30 @@ export const useSettingsStore = create<SettingsState>()(
             models: state.models?.map((model) => {
               const capabilities = model.isCustom ? getLibraryCapabilities(model.id) : undefined;
               return capabilities ? { ...model, capabilities } : model;
+            }),
+          };
+        }
+
+        if (version < 27) {
+          // Transparent background option. Built-ins are refreshed by mergeWithBuiltInModels;
+          // custom library models take the library capabilities, and other custom OpenAI
+          // models (e.g. gpt-image-1.5) gain any newly inferred options.
+          state = {
+            ...state,
+            models: state.models?.map((model) => {
+              if (!model.isCustom) return model;
+              const library = getLibraryCapabilities(model.id);
+              if (library) return { ...model, capabilities: library };
+              if (model.provider !== "openai") return model;
+              const inferred = inferOpenAiImageCapabilities(model.id).options;
+              if (!inferred) return model;
+              return {
+                ...model,
+                capabilities: {
+                  ...model.capabilities,
+                  options: { ...inferred, ...model.capabilities.options },
+                },
+              };
             }),
           };
         }

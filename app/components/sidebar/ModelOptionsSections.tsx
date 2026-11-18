@@ -1,5 +1,6 @@
 import { Accordion } from "@base-ui/react/accordion";
 import { Box } from "lucide-react";
+import { useId } from "react";
 import SVG from "react-inlinesvg";
 import { useDraftModelOptions } from "~/hooks/useDraftModelOptions";
 import {
@@ -13,6 +14,7 @@ import {
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
 import type { ModelOptionValues, StoredModel } from "~/types";
+import { Switch } from "~/components/ui/Switch";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { OptionHeader, RangeSlider, SegmentedButtons, SteppedSlider } from "./OptionControls";
 
@@ -114,6 +116,10 @@ function ModelOptionControl({
   }
 
   if (definition.kind !== "enum" || spec.kind !== "enum") return null;
+
+  if (definition.control === "toggle") {
+    return <ToggleOptionControl control={control} onChange={onChange} />;
+  }
   const options = spec.values.map((v) => ({
     value: v,
     label: definition.valueLabels[v] ?? v,
@@ -150,6 +156,42 @@ function ModelOptionControl({
         />
       )}
       {note && <p className="text-text-muted mt-1.5 text-[10px]">{note}</p>}
+    </div>
+  );
+}
+
+/** A switch whose "on" value is the spec's only value; off omits the option. */
+function ToggleOptionControl({
+  control,
+  onChange,
+}: {
+  control: ModelOptionControlState;
+  onChange: (value: string | number | undefined) => void;
+}) {
+  const id = useId();
+  const { definition, spec, value, unavailableReason } = control;
+  if (spec.kind !== "enum" || spec.values.length === 0) return null;
+  const onValue = spec.values[0];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <label
+          htmlFor={id}
+          className="text-text-tertiary cursor-pointer text-xs font-medium tracking-wide uppercase"
+        >
+          {definition.label}
+        </label>
+        <Switch
+          id={id}
+          checked={value === onValue && !unavailableReason}
+          disabled={!!unavailableReason}
+          onChange={(event) => onChange(event.target.checked ? onValue : undefined)}
+        />
+      </div>
+      {unavailableReason && (
+        <p className="text-text-muted mt-1.5 text-[10px]">{unavailableReason}</p>
+      )}
     </div>
   );
 }

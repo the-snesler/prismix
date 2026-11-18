@@ -1,5 +1,6 @@
 import { Check, Star } from "lucide-react";
 import { useState, useCallback, type ChangeEvent, type MouseEvent } from "react";
+import { hasTransparentBackground } from "~/lib/modelOptions";
 import { getScorecardAverage } from "~/lib/scorecard";
 import { formatUsd } from "~/lib/util";
 import { useGalleryStore } from "~/stores/galleryStore";
@@ -115,7 +116,7 @@ export function ImageCard({ image, selectionDisabled = false }: ImageCardProps) 
         alt={image.prompt}
         className={`h-auto w-full transition-opacity duration-300 ${
           isLoaded ? "opacity-100" : "opacity-0"
-        }`}
+        } ${hasTransparentBackground(image) ? "bg-transparency-grid" : ""}`}
         onLoad={() => setIsLoaded(true)}
         loading="lazy"
         width={image.width}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ModelCapabilities, StoredModel } from "~/types";
 import { BUILT_IN_MODELS } from "./builtInModels";
+import { inferOpenAiImageCapabilities } from "./providers/openai";
 import {
   describeModelOptions,
   getModelOptionControls,
@@ -33,7 +34,7 @@ function customModel(capabilities: Partial<ModelCapabilities>): StoredModel {
 describe("model options", () => {
   it("shows quality and images per call first, then the model's own options", () => {
     const ids = getModelOptionControls(flare, {}, noRefs).map((c) => c.definition.id);
-    expect(ids).toEqual(["quality", "numberOfImages", "complexity", "outputFormat"]);
+    expect(ids).toEqual(["quality", "numberOfImages", "complexity", "outputFormat", "background"]);
   });
 
   it("splits request fields from provider options", () => {
@@ -112,6 +113,64 @@ describe("model options", () => {
   it("prices only cost-affecting provider options", () => {
     expect(modelOptionsCostDistance(flare, { complexity: "low" }, {})).toBe(0);
     expect(modelOptionsCostDistance(flare, undefined, { outputFormat: "gif" })).toBe(1);
+  });
+
+  describe("transparent background", () => {
+    it("is sent only when switched on", () => {
+      expect(resolveModelSettings(flare, {}, noRefs).modelOptions).toEqual({});
+      expect(
+        resolveModelSettings(flare, { background: "transparent" }, noRefs).modelOptions
+      ).toEqual({ background: "transparent" });
+    });
+
+    it("drops values the model doesn't accept", () => {
+      expect(resolveModelSettings(flare, { background: "opaque" }, noRefs).modelOptions).toEqual(
+        {}
+      );
+    });
+
+    it("stays on with references (the edits endpoint accepts it)", () => {
+      expect(
+        resolveModelSettings(flare, { background: "transparent" }, withRefs).modelOptions
+      ).toEqual({ background: "transparent" });
+    });
+
+    it("is hidden and not sent for SVG or GIF output", () => {
+      for (const outputFormat of ["svg", "gif"]) {
+        const raw = { background: "transparent", outputFormat };
+        expect(resolveModelSettings(flare, raw, noRefs).modelOptions).not.toHaveProperty(
+          "background"
+        );
+        const ids = getModelOptionControls(flare, raw, noRefs).map((c) => c.definition.id);
+        expect(ids).not.toContain("background");
+      }
+    });
+
+    it("comes back when SVG becomes unavailable", () => {
+      const raw = { background: "transparent", outputFormat: "svg" };
+      expect(resolveModelSettings(flare, raw, withRefs).modelOptions).toEqual({
+        background: "transparent",
+      });
+    });
+
+    it("is never sent for models that don't declare it", () => {
+      const model = customModel({ supportsQuality: true });
+      expect(
+        resolveModelSettings(model, { background: "transparent" }, noRefs).modelOptions
+      ).toEqual({});
+    });
+
+    it("is offered for custom gpt-image-1.5 but not plain gpt-image-2", () => {
+      expect(inferOpenAiImageCapabilities("gpt-image-1.5").options).toHaveProperty("background");
+      expect(inferOpenAiImageCapabilities("gpt-image-2").options).toBeUndefined();
+    });
+
+    it("doesn't affect cost and summarizes as Transparent", () => {
+      expect(modelOptionsCostDistance(flare, { background: "transparent" }, {})).toBe(0);
+      expect(describeModelOptions({ background: "transparent" }, { model: flare })).toEqual([
+        "Transparent",
+      ]);
+    });
   });
 
   it("summarizes without noise from defaults", () => {
