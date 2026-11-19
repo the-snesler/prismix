@@ -90,7 +90,7 @@ export async function resolveModelPricing(
   const id = modelId.replace(new RegExp(`^${provider}/`), "");
   const prices = await catalogPricing();
   return (
-    prices[`${provider}:${id}`] ?? prices[`${provider}:${id.replace(/-\\d{4}-\\d{2}-\\d{2}$/, "")}`]
+    prices[`${provider}:${id}`] ?? prices[`${provider}:${id.replace(/-\d{4}-\d{2}-\d{2}$/, "")}`]
   );
 }
 

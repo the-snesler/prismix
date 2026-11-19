@@ -21,14 +21,7 @@ export const GOOGLE_IMAGE_MODELS = [
     icon: "/icons/google.svg",
     capabilities: {
       supportsAspectRatios: true,
-      supportedAspectRatios: [
-        ...STANDARD_ASPECT_RATIOS,
-        "1:4",
-        "4:1",
-        "1:8",
-        "8:1",
-        "9:21",
-      ],
+      supportedAspectRatios: [...STANDARD_ASPECT_RATIOS, "1:4", "4:1", "1:8", "8:1", "9:21"],
       supportsResolution: true,
       resolutions: ["1K", "2K", "4K"],
       supportsReferenceImages: true,
@@ -49,7 +42,8 @@ export const GOOGLE_IMAGE_MODELS = [
     },
   },
   {
-    id: "gemini-3-pro-image-preview",
+    id: "gemini-3-pro-image",
+    aliases: ["gemini-3-pro-image-preview"],
     provider: "google",
     name: "Gemini 3.0 Pro",
     icon: "/icons/google.svg",
@@ -65,7 +59,7 @@ export const GOOGLE_IMAGE_MODELS = [
       source: {
         kind: "model-library",
         url: "https://ai.google.dev/gemini-api/docs/pricing",
-        fetchedAt: Date.UTC(2026, 8, 19),
+        fetchedAt: Date.UTC(2026, 10, 19),
       },
       rules: [
         { metric: "inputTokens", units: 1_000_000, usd: 2 },
@@ -75,7 +69,8 @@ export const GOOGLE_IMAGE_MODELS = [
     },
   },
   {
-    id: "gemini-3.1-flash-image-preview",
+    id: "gemini-3.1-flash-image",
+    aliases: ["gemini-3.1-flash-image-preview"],
     provider: "google",
     name: "Gemini 3.1 Flash",
     icon: "/icons/google.svg",
@@ -106,7 +101,7 @@ export const GOOGLE_IMAGE_MODELS = [
       source: {
         kind: "model-library",
         url: "https://ai.google.dev/gemini-api/docs/pricing",
-        fetchedAt: Date.UTC(2026, 8, 19),
+        fetchedAt: Date.UTC(2026, 10, 19),
       },
       rules: [
         { metric: "inputTokens", units: 1_000_000, usd: 0.5 },
