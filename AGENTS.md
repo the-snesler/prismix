@@ -103,7 +103,7 @@ Besides the browser-only build (Cloudflare, the default), the app can be built f
 
 ### Zustand Stores
 
-1. **`settingsStore`** - Persisted to localStorage (`studio-settings`, current version 26)
+1. **`settingsStore`** - Persisted to localStorage (`studio-settings`, current version 27)
    - `apiKeys`: `{ google, replicate, openai }` — provider API keys
    - `models: StoredModel[]` — built-in + user-added Replicate models (ordered)
    - `textModels: StoredTextModel[]` — list of LLMs; exactly one has `enabled: true`
@@ -200,10 +200,10 @@ Key helpers in `lib/models.ts`:
 
 ### Model Options
 
-Settings that only some models accept (quality, images per call, GPT Image 2.6 `complexity`, SVG/GIF output) are **model options**, chosen per model, not shared generation fields. Aspect ratio and resolution stay shared.
+Settings that only some models accept (quality, images per call, GPT Image 2.6 `complexity`, SVG/GIF output, transparent background) are **model options**, chosen per model, not shared generation fields. Aspect ratio and resolution stay shared.
 
 - A model opts in with `capabilities.options[id]`: an enum (`values`) or a range (`min`/`max`/`step`/`default`). `quality` and `numberOfImages` instead derive their spec (`getSpec`) from `supportsQuality`/`supportedQualities` and `supportsNumberOfImages`/`maxImagesPerRequest`, and have `requestField: true`: `resolveModelSettings`/`toModelSettings` lift them into the task's own `quality`/`numberOfImages` fields, and only the rest goes in `modelOptions`. Saved records keep that shape.
-- `lib/modelOptions.ts` → `MODEL_OPTION_DEFINITIONS` owns the label, control (`stepped` slider with a Default stop, `segmented` buttons, `slider`), `affectsCost`, `visibleWhen` (e.g. GIF frame controls only show for GIF), and `unavailableReason` (e.g. SVG/GIF need no references, since those go through the edits endpoint).
+- `lib/modelOptions.ts` → `MODEL_OPTION_DEFINITIONS` owns the label, control (`stepped` slider with a Default stop, `segmented` buttons, `slider`, `toggle` switch whose on value is the spec's only value), `affectsCost`, `visibleWhen` (e.g. GIF frame controls only show for GIF), and `unavailableReason` (e.g. SVG/GIF need no references, since those go through the edits endpoint).
 - Raw picks live per model in `generationStore.currentModelOptions`. Always run them through `resolveModelOptions` (or `useDraftModelOptions`) before use. Resolved values are what get sent (`GenerationParams.modelOptions`), saved (`modelOptions` on gallery items/records), hashed (signature), and compared for pricing (only options with `affectsCost`).
 - Visibility (`visibleWhen`, e.g. images per call is hidden for SVG) is resolved after values, so an option may depend on one listed after it.
 - The gallery and editor sidebars render one collapsible section per selected model with options, titled with the model name (`components/sidebar/ModelOptionsSections.tsx`, `editing` in the editor), using the shared controls in `OptionControls.tsx`. Tests: `lib/modelOptions.test.ts`.

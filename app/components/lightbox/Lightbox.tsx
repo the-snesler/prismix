@@ -47,6 +47,7 @@ import type {
 } from "~/types";
 import { Accordion } from "@base-ui/react/accordion";
 import { logger } from "~/lib/logging";
+import { hasTransparentBackground } from "~/lib/modelOptions";
 import { Tooltip } from "../ui/Tooltip";
 import { formatRelativeDate, formatUsd, imageFileExtension } from "~/lib/util";
 
@@ -449,7 +450,9 @@ export function Lightbox() {
               height={galleryImage?.height}
               alt={imageAlt}
               onClick={handleImageClick}
-              className="pointer-events-auto block h-auto max-h-[70dvh] min-h-0 w-auto max-w-full min-w-0 cursor-auto lg:max-h-full"
+              className={`pointer-events-auto block h-auto max-h-[70dvh] min-h-0 w-auto max-w-full min-w-0 cursor-auto lg:max-h-full ${
+                galleryImage && hasTransparentBackground(galleryImage) ? "bg-transparency-grid" : ""
+              }`}
             />
           </section>
 

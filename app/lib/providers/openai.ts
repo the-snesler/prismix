@@ -12,7 +12,7 @@ import {
   resolveLibraryModel,
   searchModelLibrary,
 } from "./modelLibrary";
-import { OPENAI_IMAGE_MODELS } from "./openaiModels";
+import { OPENAI_IMAGE_MODELS, TRANSPARENT_BACKGROUND_OPTIONS } from "./openaiModels";
 import type { Provider, ResolvedImageModel, SearchResult, TextGenerationArgs } from "./types";
 import { inferName } from "../modelNames";
 import { normalizeModelId } from ".";
@@ -84,6 +84,11 @@ async function generateImage(
   // The SDK types `output_format` as raster-only.
   const outputFormatParam = outputFormat as "png";
   const quality = (params.quality ?? undefined) as OpenAI.ImageEditParams["quality"];
+  // Transparency needs PNG or WebP; raster output here is always PNG.
+  const background =
+    outputFormat === "png" && params.modelOptions?.background === "transparent"
+      ? ("transparent" as const)
+      : undefined;
 
   // The SDK's `size` is typed as a closed union of the docs' popular strings, but
   // gpt-image-2 accepts any WxH within its constraints. Cast through `as never` so
@@ -107,6 +112,7 @@ async function generateImage(
         n,
         size: sizeParam,
         ...(quality ? { quality } : {}),
+        ...(background ? { background } : {}),
         output_format: outputFormatParam,
         ...untypedFields,
       };
@@ -123,6 +129,7 @@ async function generateImage(
       n,
       size: sizeParam,
       ...(quality ? { quality } : {}),
+      ...(background ? { background } : {}),
       output_format: outputFormatParam,
       ...untypedFields,
     };
@@ -236,6 +243,8 @@ export function inferOpenAiImageCapabilities(modelId: string): ResolvedImageMode
     supportedQualities: ["low", "medium", "high"],
     supportsNumberOfImages: true,
     maxImagesPerRequest: 10,
+    // gpt-image-1.5 accepts transparent backgrounds; plain gpt-image-2 doesn't (handled above).
+    options: TRANSPARENT_BACKGROUND_OPTIONS,
   };
 }
 

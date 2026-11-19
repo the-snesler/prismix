@@ -31,6 +31,7 @@ export interface ModelCapabilities {
 export type DeclaredModelOptionId =
   | "complexity"
   | "outputFormat"
+  | "background"
   | "gifFrameCount"
   | "gifFrameDurationMs";
 

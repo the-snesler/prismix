@@ -78,8 +78,11 @@ interface BaseOptionDefinition {
 
 export interface EnumOptionDefinition extends BaseOptionDefinition {
   kind: "enum";
-  /** `stepped`: slider with a leading "Default" stop. `segmented`: one button per value. */
-  control: "stepped" | "segmented";
+  /**
+   * `stepped`: slider with a leading "Default" stop. `segmented`: one button per value.
+   * `toggle`: a switch; on is the spec's only value, off omits the option.
+   */
+  control: "stepped" | "segmented" | "toggle";
   valueLabels: Record<string, string>;
   valueHints?: Record<string, string>;
   /** Value equivalent to omitting the option. Never stored, sent, or hashed. */
@@ -99,6 +102,8 @@ export interface RangeOptionDefinition extends BaseOptionDefinition {
 export type ModelOptionDefinition = EnumOptionDefinition | RangeOptionDefinition;
 
 const isGif = (values: ModelOptionValues) => values.outputFormat === "gif";
+const isRaster = (values: ModelOptionValues) =>
+  values.outputFormat !== "svg" && values.outputFormat !== "gif";
 
 /** Known qualities in `QUALITIES` order, then any model-specific values in their own order. */
 function orderQualities(values: string[]): string[] {
@@ -171,6 +176,16 @@ export const MODEL_OPTION_DEFINITIONS: readonly ModelOptionDefinition[] = [
       referenceCount > 0
         ? "SVG and GIF aren't available when editing or using reference images."
         : null,
+  },
+  {
+    id: "background",
+    kind: "enum",
+    control: "toggle",
+    label: "Transparent background",
+    affectsCost: false,
+    valueLabels: { transparent: "Transparent" },
+    // OpenAI documents transparency for PNG and WebP output only.
+    visibleWhen: isRaster,
   },
   {
     id: "gifFrameCount",
@@ -351,6 +366,11 @@ export function modelOptionsFromSaved(saved: {
   modelOptions?: ModelOptionValues;
 }): ModelOptionValues {
   return { ...saved.modelOptions, ...(saved.quality ? { quality: saved.quality } : {}) };
+}
+
+/** Whether a saved generation asked for a transparent background (shown on a checkerboard). */
+export function hasTransparentBackground(item: { modelOptions?: ModelOptionValues }): boolean {
+  return item.modelOptions?.background === "transparent";
 }
 
 export function hasModelOptions(model: StoredModel): boolean {
