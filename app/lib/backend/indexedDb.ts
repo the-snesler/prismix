@@ -281,6 +281,23 @@ export const indexedDbRepository: GalleryRepository = {
     return { total, indexed };
   },
 
+  async getImageIdsNeedingEmbedding(modelId) {
+    const db = await initDB();
+    const tx = db.transaction("images", "readonly");
+
+    const ids: string[] = [];
+    let cursor = await tx.store.index("byCreatedAt").openCursor(null, "prev");
+    for (; cursor; cursor = await cursor.continue()) {
+      const record = cursor.value as StoredImageRecord;
+      const indexed =
+        record.embedding &&
+        record.embedding.length > 0 &&
+        (!modelId || record.embeddingModelId === modelId);
+      if (!indexed) ids.push(record.id);
+    }
+    return ids;
+  },
+
   async deleteImage(id) {
     const db = await initDB();
     await db.delete("images", id);

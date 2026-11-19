@@ -1,4 +1,9 @@
-import { getAllImages, getEmbeddingCounts, getImageBlob, updateImageEmbedding } from "./db";
+import {
+  getEmbeddingCounts,
+  getImageBlob,
+  getImageIdsNeedingEmbedding,
+  updateImageEmbedding,
+} from "./db";
 import { useEmbeddingStatusStore } from "~/stores/embeddingStatusStore";
 import { useGalleryStore } from "~/stores/galleryStore";
 import { useSettingsStore } from "~/stores/settingsStore";
@@ -187,16 +192,9 @@ export async function enqueueMissingEmbeddings(currentModelId: string | null): P
 
   let queued = 0;
   try {
-    const all = await getAllImages();
-    for (const record of all) {
-      const needs =
-        !record.embedding ||
-        record.embedding.length === 0 ||
-        (currentModelId && record.embeddingModelId !== currentModelId);
-      if (needs) {
-        enqueueImageEmbedding(record.id);
-        queued++;
-      }
+    for (const id of await getImageIdsNeedingEmbedding(currentModelId)) {
+      enqueueImageEmbedding(id);
+      queued++;
     }
   } catch (err) {
     useEmbeddingStatusStore

@@ -38,6 +38,12 @@ export interface GalleryRepository {
   getImageCount(): Promise<number>;
   getExistingImageIds(): Promise<Set<string>>;
   getEmbeddingCounts(modelId: string | null): Promise<{ total: number; indexed: number }>;
+  /**
+   * IDs of images with no embedding, or (when `modelId` is set) one made by a
+   * different model, newest first. Lets the embedding queue find work without
+   * loading every record and its embedding.
+   */
+  getImageIdsNeedingEmbedding(modelId: string | null): Promise<string[]>;
   deleteImage(id: string): Promise<void>;
   /** No-op if the image no longer exists. */
   updateImageEmbedding(id: string, embedding: number[], embeddingModelId: string): Promise<void>;

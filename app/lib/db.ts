@@ -27,6 +27,8 @@ export const getImageCount: Repo["getImageCount"] = () => repo().getImageCount()
 export const getExistingImageIds: Repo["getExistingImageIds"] = () => repo().getExistingImageIds();
 export const getEmbeddingCounts: Repo["getEmbeddingCounts"] = (modelId) =>
   repo().getEmbeddingCounts(modelId);
+export const getImageIdsNeedingEmbedding: Repo["getImageIdsNeedingEmbedding"] = (modelId) =>
+  repo().getImageIdsNeedingEmbedding(modelId);
 export const deleteImage: Repo["deleteImage"] = (id) => repo().deleteImage(id);
 export const updateImageEmbedding: Repo["updateImageEmbedding"] = (id, embedding, modelId) =>
   repo().updateImageEmbedding(id, embedding, modelId);

@@ -95,6 +95,9 @@ export function imageRoutes(repository: SqliteGalleryRepository) {
   app.get("/embedding-counts", async (c) =>
     c.json(await repository.getEmbeddingCounts(c.req.query("modelId") || null))
   );
+  app.get("/needing-embedding", async (c) =>
+    c.json(await repository.getImageIdsNeedingEmbedding(c.req.query("modelId") || null))
+  );
 
   app.post("/remove-style", async (c) => {
     const body = await readJsonBody(c);

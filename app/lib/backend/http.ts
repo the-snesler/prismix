@@ -122,6 +122,11 @@ export const httpRepository: GalleryRepository = {
     return response ? response.blob() : null;
   },
 
+  getImageIdsNeedingEmbedding(modelId) {
+    const query = modelId ? `?modelId=${encodeURIComponent(modelId)}` : "";
+    return requestJson<string[]>(`/api/images/needing-embedding${query}`);
+  },
+
   getImageStatRecords() {
     return requestJson<ImageStatRecord[]>("/api/images/stats");
   },
