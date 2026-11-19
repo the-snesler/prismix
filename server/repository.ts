@@ -276,6 +276,21 @@ export class SqliteGalleryRepository implements GalleryRepository {
     return { total: row.total, indexed: row.indexed };
   }
 
+  async getImageIdsNeedingEmbedding(modelId: string | null): Promise<string[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM images
+         WHERE CASE
+           WHEN json_type(record, '$.embedding') = 'array'
+             AND json_array_length(record, '$.embedding') > 0
+             AND (?1 IS NULL OR json_extract(record, '$.embeddingModelId') = ?1)
+           THEN 0 ELSE 1 END
+         ORDER BY created_at DESC, id DESC`
+      )
+      .all(modelId || null) as Array<{ id: string }>;
+    return rows.map((row) => row.id);
+  }
+
   async deleteImage(id: string): Promise<void> {
     const row = this.getImageRow(id);
     if (!row) return;

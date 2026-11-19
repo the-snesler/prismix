@@ -2,6 +2,7 @@
   "name": "prismix",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.3.0",
   "scripts": {
     "build": "react-router build",
     "build:server": "node server/build.mjs",

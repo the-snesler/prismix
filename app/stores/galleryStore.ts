@@ -155,7 +155,6 @@ export const useGalleryStore = create<GalleryState>()((set, get) => ({
         dbOffset: state.dbOffset + newItems.length,
         hasMore: newItems.length >= PAGE_SIZE,
       }));
-      maybeKickEmbeddingQueue();
     } catch (error) {
       console.error("Failed to load more images:", error);
     } finally {
