@@ -54,7 +54,8 @@ export function isTextCapable(provider: Provider): provider is TextCapableProvid
   );
 }
 
-// strip provider prefix if present
+// strip provider prefix if present (and the Gemini API's `models/` resource prefix)
 export function normalizeModelId(id: string | undefined, provider: string): string {
-  return id?.replace(new RegExp(`^${provider}/`), "").trim() ?? "";
+  const stripped = id?.replace(new RegExp(`^${provider}/`), "").trim() ?? "";
+  return provider === "google" ? stripped.replace(/^models\//, "") : stripped;
 }

@@ -41,6 +41,7 @@ import {
 } from "~/lib/db";
 import type {
   CompletedGalleryItem,
+  GenerationUsage,
   ReferenceImage,
   StoredCharacter,
   StoredEditorSession,
@@ -314,8 +315,15 @@ export function Lightbox() {
     </>
   ) : galleryImage?.usage ? (
     <>
-      <p className="text-text-primary">Cost unavailable</p>
-      <p className="text-text-muted">{formatUsageSummary(galleryImage.usage?.metrics ?? {})}</p>
+      <p className="text-text-primary text-sm font-medium">Cost unavailable</p>
+      {usageMetricEntries(galleryImage.usage).map(([metric, amount]) => (
+        <p key={metric} className="text-text-muted">
+          {formatMetric(metric, amount)}
+        </p>
+      ))}
+      <p className="text-text-muted pt-1">
+        Usage was recorded, but no rate is known for this model.
+      </p>
     </>
   ) : undefined;
 
@@ -742,10 +750,11 @@ function formatMetric(metric: string, amount: number): string {
   return `${amount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${labels[metric] ?? metric}`;
 }
 
-function formatUsageSummary(metrics: Record<string, number | undefined>): string {
-  if (typeof metrics.runtimeSeconds === "number")
-    return `${metrics.runtimeSeconds.toFixed(1)}s provider runtime recorded; no trusted rate was available.`;
-  if (typeof metrics.outputMegapixels === "number")
-    return `${metrics.outputMegapixels.toFixed(2)} output MP recorded; no trusted rate was available.`;
-  return "Provider usage was recorded, but no trusted rate was available.";
+/** Recorded usage metrics, split per image when one call produced several. */
+function usageMetricEntries(usage: GenerationUsage): [string, number][] {
+  const divisor =
+    usage.allocationDivisor && usage.allocationDivisor > 0 ? usage.allocationDivisor : 1;
+  return Object.entries(usage.metrics).flatMap(([metric, amount]) =>
+    typeof amount === "number" && Number.isFinite(amount) ? [[metric, amount / divisor]] : []
+  ) as [string, number][];
 }

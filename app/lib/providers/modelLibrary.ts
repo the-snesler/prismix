@@ -16,14 +16,21 @@ export interface ImageModelDefinition<Config = unknown> {
   icon?: string;
   config?: Config;
   pricing?: ModelPricing;
+  /** Other IDs the provider serves this model under (e.g. a superseded `-preview` ID). */
+  aliases?: string[];
 }
 
 export function findLibraryModel<T extends ImageModelDefinition>(
   library: readonly T[],
   modelId: string
 ): T | undefined {
-  const normalizedId = modelId.replace(new RegExp(`^${library[0]?.provider}/`), "").trim();
-  return library.find((model) => model.id === normalizedId);
+  const provider = library[0]?.provider;
+  let normalizedId = modelId.replace(new RegExp(`^${provider}/`), "").trim();
+  // The Gemini API lists models as `models/<id>`; older search results kept that prefix.
+  if (provider === "google") normalizedId = normalizedId.replace(/^models\//, "");
+  return library.find(
+    (model) => model.id === normalizedId || model.aliases?.includes(normalizedId)
+  );
 }
 
 export function resolveLibraryModel<T extends ImageModelDefinition>(

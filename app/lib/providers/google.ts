@@ -7,7 +7,12 @@ import { inferName } from "~/lib/modelNames";
 import { toRateLimitError } from "~/lib/retry";
 import { base64ToBlob, blobToBase64 } from "~/lib/util";
 import { GOOGLE_IMAGE_MODELS } from "./googleModels";
-import { mergeSearchResults, resolveLibraryModel, searchModelLibrary } from "./modelLibrary";
+import {
+  findLibraryModel,
+  mergeSearchResults,
+  resolveLibraryModel,
+  searchModelLibrary,
+} from "./modelLibrary";
 import type { Provider, ResolvedImageModel, SearchResult, TextGenerationArgs } from "./types";
 import { normalizeModelId } from ".";
 
@@ -195,7 +200,7 @@ async function listGeminiModels(apiKey: string): Promise<Model[]> {
 function isImageGenerationModel(model: Model): boolean {
   const id = normalizeModelId(model.name, "google").toLowerCase();
   if (!id) return false;
-  if (GOOGLE_IMAGE_MODELS.some((model) => model.id === id)) return true;
+  if (findLibraryModel(GOOGLE_IMAGE_MODELS, id)) return true;
   // Gemini image generation still uses `generateContent`, so action flags
   // can't distinguish image from text. Go by naming convention.
   return /(^|[-_\/])(image|imagen)([-_\/]|$)/.test(id) || id.includes("-image-");
