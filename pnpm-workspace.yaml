@@ -1,6 +1,9 @@
 allowBuilds:
   esbuild: true
-  onnxruntime-node: true
+  # Its postinstall only downloads CUDA binaries from GitHub releases; the CPU
+  # binaries ship in the npm package, and transformers.js runs in the browser
+  # (onnxruntime-web) anyway.
+  onnxruntime-node: false
   protobufjs: true
   sharp: true
   workerd: true
