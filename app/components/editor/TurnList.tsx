@@ -111,7 +111,7 @@ function SourceTurn({
         <img
           src={displayUrl}
           alt={prompt || "Source image"}
-          className={`max-h-[calc(100vh-25rem)] max-w-full transition-opacity duration-300 ${isLoaded ? "opacity-100" : "opacity-0"}`}
+          className={`max-h-[calc(100dvh-25rem)] max-w-full transition-opacity duration-300 ${isLoaded ? "opacity-100" : "opacity-0"}`}
           onLoad={() => setIsLoaded(true)}
         />
 

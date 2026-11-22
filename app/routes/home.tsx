@@ -61,7 +61,7 @@ function SettingsLoadingScreen() {
   );
 
   return (
-    <div className="text-text-muted flex h-screen flex-col items-center justify-center gap-3 text-sm">
+    <div className="text-text-muted flex h-dvh flex-col items-center justify-center gap-3 text-sm">
       {loadState.status === "error" ? (
         <>
           <p className="text-red-400">Couldn&apos;t load settings from the server.</p>
@@ -159,7 +159,7 @@ function HomeLayout() {
   }, [inFlightCount, desktopNotificationsEnabled]);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <MobileHeader />
       <MobileSidebar />
       <Sidebar />
