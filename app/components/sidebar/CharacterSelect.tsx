@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import { getReferenceImagesByIds } from "~/lib/db";
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
+import { usePortalContainer } from "~/components/ui/PortalContainer";
 
 function CharacterThumbnail({ referenceImageId }: { referenceImageId: string }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function CharacterSelect() {
   const characters = useSettingsStore((s) => s.characters);
   const characterIds = useGenerationStore((s) => s.currentCharacterIds);
   const setCharacterIds = useGenerationStore((s) => s.setCharacterIds);
+  const portalContainer = usePortalContainer();
 
   const enabledCharacters = characters.filter((c) => c.enabled);
   const selected = characterIds
@@ -68,7 +70,7 @@ export function CharacterSelect() {
         </Select.Value>
         <ChevronDown className="h-3 w-3 shrink-0" />
       </Select.Trigger>
-      <Select.Portal>
+      <Select.Portal container={portalContainer}>
         <Select.Positioner sideOffset={6} className="z-50">
           <Select.Popup className="bg-surface-overlay border-c-border animate-in fade-in zoom-in-95 flex max-h-72 min-w-48 flex-col overflow-y-auto rounded-lg border p-1 text-sm shadow-lg">
             {enabledCharacters.map((character) => (

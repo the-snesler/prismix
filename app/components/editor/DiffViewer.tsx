@@ -82,9 +82,11 @@ function DiffViewerInner({
         ref={containerRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-        className="animate-fade-in bg-surface-raised relative z-10 max-h-[90vh] max-w-[90vw] cursor-ew-resize touch-none overflow-hidden rounded-xl shadow-2xl select-none"
+        className="animate-fade-in bg-surface-raised relative z-10 max-h-[90dvh] max-w-[90vw] cursor-ew-resize touch-none overflow-hidden rounded-xl shadow-2xl select-none"
         style={
-          aspectRatio ? { aspectRatio, width: `min(90vw, calc(90vh * ${aspectRatio}))` } : undefined
+          aspectRatio
+            ? { aspectRatio, width: `min(90vw, calc(90dvh * ${aspectRatio}))` }
+            : undefined
         }
       >
         {parentUrl && childUrl && (

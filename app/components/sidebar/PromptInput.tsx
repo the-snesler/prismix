@@ -30,6 +30,7 @@ import { StyleSelect } from "./StyleSelect";
 import { CharacterSelect } from "./CharacterSelect";
 import { ReferenceImageMarkupOverlay } from "../reference/ReferenceImageMarkupOverlay";
 import { SortableReferenceImage } from "../reference/SortableReferenceImage";
+import { closeMobileSidebar } from "./mobileSidebar";
 
 export function PromptInput() {
   const prompt = useGenerationStore((s) => s.currentPrompt);
@@ -332,7 +333,11 @@ export function PromptInput() {
                           image: { id: img.id, url: img.url, name: img.name },
                         })
                       }
-                      onEdit={setEditingReferenceId}
+                      onEdit={(id) => {
+                        // The markup editor portals to <body>, under the mobile sidebar.
+                        closeMobileSidebar();
+                        setEditingReferenceId(id);
+                      }}
                       onMatchAspectRatio={arbitraryAspectRatioModel ? setAspectRatio : undefined}
                       maxLongShortRatio={arbitraryAspectRatioModel?.capabilities.maxLongShortRatio}
                       referenceEnabled={referenceEnabled}

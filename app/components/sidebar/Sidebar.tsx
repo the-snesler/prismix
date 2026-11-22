@@ -29,8 +29,9 @@ import { useSettingsStore } from "~/stores/settingsStore";
 import { hasProviderAccess } from "~/lib/providers";
 import { Accordion } from "@base-ui/react/accordion";
 import { RecentSessions } from "./RecentSessions";
-
-export const SIDEBAR_POPOVER_ID = "sidebar-popover";
+import { SIDEBAR_POPOVER_ID, closeMobileSidebar } from "./mobileSidebar";
+import { PortalContainerContext } from "~/components/ui/PortalContainer";
+import { useLightboxStore } from "~/stores/lightboxStore";
 
 type SidebarKind = "gallery" | "editor" | "characters" | "settings";
 
@@ -200,6 +201,7 @@ function SettingsSidebarContent() {
   }, []);
 
   const scrollTo = (id: string) => {
+    closeMobileSidebar();
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -268,22 +270,45 @@ export function Sidebar() {
 export function MobileSidebar() {
   const location = useLocation();
   const kind = getSidebarKind(location.pathname);
+  const isLightboxOpen = useLightboxStore((s) => s.isLightboxOpen);
+  const asideRef = useRef<HTMLElement>(null);
+
+  // Get out of the way after navigating (e.g. "Add character" in the character
+  // picker, restoring an editor session) and when the lightbox opens, which
+  // would otherwise render underneath the popover.
+  useEffect(() => {
+    closeMobileSidebar();
+  }, [location.key]);
+  useEffect(() => {
+    if (isLightboxOpen) closeMobileSidebar();
+  }, [isLightboxOpen]);
 
   if (!kind) return null;
 
-  const handleClose = () => {
-    const popover = document.getElementById(SIDEBAR_POPOVER_ID);
-    popover?.hidePopover();
-  };
-
   return (
     <aside
+      ref={asideRef}
       id={SIDEBAR_POPOVER_ID}
       popover="auto"
-      className="sidebar-popover border-border-subtle bg-surface-raised m-0 flex h-full max-h-full w-80 max-w-[85vw] flex-col border-0 border-r p-0"
+      className="sidebar-popover border-border-subtle bg-surface-raised m-0 flex h-dvh max-h-dvh w-80 max-w-[85vw] flex-col overflow-visible border-0 border-r p-0"
+      onKeyDownCapture={(e) => {
+        // Escape should close an open picker, not the whole sidebar. Cancelling
+        // the keydown stops the popover's own light dismiss. Capture phase,
+        // because the pickers stop the event from bubbling.
+        if (
+          e.key === "Escape" &&
+          asideRef.current?.querySelector('[role="combobox"][aria-expanded="true"]')
+        ) {
+          e.preventDefault();
+        }
+      }}
     >
-      <SidebarHeader onClose={handleClose} />
-      <SidebarContent kind={kind} />
+      {/* Popups portal in here: anything portaled to <body> would render below
+          the popover's top layer and its clicks would light-dismiss it. */}
+      <PortalContainerContext.Provider value={asideRef}>
+        <SidebarHeader onClose={closeMobileSidebar} />
+        <SidebarContent kind={kind} />
+      </PortalContainerContext.Provider>
     </aside>
   );
 }

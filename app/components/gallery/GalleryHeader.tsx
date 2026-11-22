@@ -48,7 +48,7 @@ export function GalleryHeader({
   const openEditor = () => navigate("/app/editor");
 
   return (
-    <header className="border-border-subtle flex h-18 items-center gap-2 border-b px-6 py-4">
+    <header className="border-border-subtle flex flex-wrap items-center gap-x-2 gap-y-3 border-b px-4 py-3 md:h-18 md:flex-nowrap md:px-6 md:py-4">
       <div className="hidden w-80 shrink-0 items-center gap-3 md:flex">
         <div className="border-accent bg-accent-muted/50 flex h-8 w-8 items-center justify-center rounded-lg border">
           <SVG src={drop} className="h-4 w-4 text-white" />
@@ -58,7 +58,7 @@ export function GalleryHeader({
         </div>
       </div>
 
-      <h2 className="text-text-tertiary flex items-center gap-2 truncate text-sm font-medium tracking-wide uppercase">
+      <h2 className="text-text-tertiary flex min-w-0 flex-1 items-center gap-2 text-sm font-medium tracking-wide uppercase md:flex-none">
         {showBackButton && (
           <button
             onClick={handleBack}
@@ -69,9 +69,9 @@ export function GalleryHeader({
           </button>
         )}
         {title ? (
-          title
+          <span className="truncate">{title}</span>
         ) : (
-          <>
+          <span className="truncate">
             <NumberFlow
               value={count}
               format={{ useGrouping: false }}
@@ -81,13 +81,13 @@ export function GalleryHeader({
               willChange
             />{" "}
             Generation{count !== 1 ? "s" : ""}
-          </>
+          </span>
         )}
       </h2>
 
       {onSearchChange ? (
-        <div className="flex flex-1 items-center gap-2 px-4">
-          <div className="mx-auto flex w-full max-w-sm items-center gap-2">
+        <div className="order-last flex basis-full items-center gap-2 md:order-none md:flex-1 md:basis-auto md:px-4">
+          <div className="mx-auto flex w-full items-center gap-2 md:max-w-sm">
             <div className="flex-1">
               <SearchBar
                 value={searchQuery ?? ""}
@@ -105,10 +105,10 @@ export function GalleryHeader({
           </div>
         </div>
       ) : (
-        <div className="flex-1" />
+        <div className="hidden flex-1 md:block" />
       )}
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <div className="bg-surface-raised flex items-center gap-1 rounded-lg p-1">
           <ViewModeButton
             onClick={openGallery}
@@ -161,7 +161,7 @@ function ViewModeButton({
     <Tooltip content={label} placement="bottom" delay={200}>
       <button
         onClick={onClick}
-        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors md:px-3 ${
           isActive
             ? "bg-surface-overlay text-text-primary"
             : "text-text-tertiary hover:bg-surface-overlay hover:text-text-secondary"

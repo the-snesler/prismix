@@ -6,6 +6,7 @@ import { Clock, Plus, ChevronRight } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { formatRelativeDate } from "~/lib/util";
 import { clsx } from "clsx";
+import { closeMobileSidebar } from "./mobileSidebar";
 
 export function RecentSessions() {
   const [sessions, setSessions] = useState<StoredEditorSession[]>([]);
@@ -84,6 +85,7 @@ export function RecentSessions() {
   const handleNewSession = () => {
     clearForSessionRestore();
     resetEditor();
+    closeMobileSidebar();
   };
 
   const COLLAPSED_COUNT = 3;
@@ -166,7 +168,10 @@ export function RecentSessions() {
           return (
             <button
               key={session.id}
-              onClick={() => void restoreSession(session.id)}
+              onClick={() => {
+                closeMobileSidebar();
+                void restoreSession(session.id);
+              }}
               disabled={isActive}
               className={clsx(
                 "flex w-full items-center gap-2.5 rounded-lg p-2 text-left transition-colors",
