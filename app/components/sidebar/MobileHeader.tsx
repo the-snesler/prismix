@@ -1,16 +1,18 @@
-import { Droplet, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useLocation } from "react-router";
-import { SIDEBAR_POPOVER_ID } from "./Sidebar";
+import SVG from "react-inlinesvg";
+import drop from "~/drop.svg";
+import { SIDEBAR_POPOVER_ID } from "./mobileSidebar";
 
 export function MobileHeader() {
   const location = useLocation();
   const showMenu = !location.pathname.startsWith("/app/stats");
 
   return (
-    <header className="border-border-subtle bg-surface-raised flex items-center justify-between border-b px-4 py-3 md:hidden">
+    <header className="border-border-subtle bg-surface-raised flex shrink-0 items-center justify-between border-b px-4 py-3 md:hidden">
       <div className="flex items-center gap-3">
-        <div className="bg-surface-overlay flex h-8 w-8 items-center justify-center rounded-lg">
-          <Droplet className="text-accent-muted h-4 w-4" />
+        <div className="border-accent bg-accent-muted/50 flex h-8 w-8 items-center justify-center rounded-lg border">
+          <SVG src={drop} className="h-4 w-4 text-white" />
         </div>
         <div>
           <h1 className="text-sm font-semibold">Prismix</h1>

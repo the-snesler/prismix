@@ -13,6 +13,7 @@ import {
   FloatingArrow,
   type Placement,
 } from "@floating-ui/react";
+import { usePortalContainer } from "./PortalContainer";
 
 interface TooltipProps {
   content: ReactNode;
@@ -31,6 +32,7 @@ export function Tooltip({
 }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const arrowRef = useRef(null);
+  const portalContainer = usePortalContainer();
   const { refs, floatingStyles, context, isPositioned } = useFloating({
     open,
     onOpenChange: setOpen,
@@ -59,7 +61,7 @@ export function Tooltip({
         ...getReferenceProps(),
       })}
       {isMounted && (
-        <FloatingPortal>
+        <FloatingPortal root={portalContainer}>
           <div
             ref={refs.setFloating}
             style={floatingStyles}

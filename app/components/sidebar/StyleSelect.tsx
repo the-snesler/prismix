@@ -2,11 +2,13 @@ import { Select } from "@base-ui/react/select";
 import { Check, ChevronDown, Palette } from "lucide-react";
 import { useGenerationStore } from "~/stores/generationStore";
 import { useSettingsStore } from "~/stores/settingsStore";
+import { usePortalContainer } from "~/components/ui/PortalContainer";
 
 export function StyleSelect() {
   const styles = useSettingsStore((s) => s.styles);
   const styleId = useGenerationStore((s) => s.currentStyleId);
   const setStyleId = useGenerationStore((s) => s.setStyleId);
+  const portalContainer = usePortalContainer();
 
   const enabledStyles = styles.filter((s) => s.enabled);
   const selected = styleId ? enabledStyles.find((s) => s.id === styleId) : null;
@@ -21,7 +23,7 @@ export function StyleSelect() {
         <Select.Value className="truncate">{selected?.name ?? "Style"}</Select.Value>
         <ChevronDown className="h-3 w-3 shrink-0" />
       </Select.Trigger>
-      <Select.Portal>
+      <Select.Portal container={portalContainer}>
         <Select.Positioner sideOffset={6} className="z-50">
           <Select.Popup className="bg-surface-overlay border-c-border animate-in fade-in zoom-in-95 max-h-72 min-w-48 overflow-y-auto rounded-lg border p-1 text-sm shadow-lg">
             <Select.Item

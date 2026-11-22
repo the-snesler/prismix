@@ -12,6 +12,7 @@ import { computeReferencePrecedence } from "~/lib/referencePrecedence";
 import { Tooltip } from "~/components/ui/Tooltip";
 import NumberFlow from "@number-flow/react";
 import { GenerationCostPreview } from "./GenerationCostPreview";
+import { closeMobileSidebar } from "./mobileSidebar";
 
 export function GenerateButton() {
   const prompt = useGenerationStore((s) => s.currentPrompt);
@@ -117,6 +118,8 @@ export function GenerateButton() {
     }
     if (canGenerate) {
       generate();
+      // On mobile, reveal the gallery so the new loading cards are visible.
+      closeMobileSidebar();
     }
   };
 
