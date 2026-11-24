@@ -9,6 +9,7 @@ import type {
 } from "~/types";
 import { createThumbnailBlob } from "~/lib/imageProcessing";
 import { toImageStatRecord, type ImageStatRecord } from "~/lib/stats";
+import { searchImages } from "~/lib/gallerySearch";
 import type { GalleryRepository, ImageBlobVariant } from "./types";
 
 const DB_NAME = "studio-image-gallery";
@@ -235,6 +236,23 @@ export const indexedDbRepository: GalleryRepository = {
   async getImageById(id) {
     const record = await getStoredImage(id);
     return record ? withoutBlobs(record) : null;
+  },
+
+  async getImagesByIds(ids) {
+    const db = await initDB();
+    const raw = await Promise.all(ids.map((id) => db.get("images", id)));
+    const records = await Promise.all(
+      raw.filter((r) => r !== undefined).map((r) => normalizeStoredImageRecord(db, r))
+    );
+    return records.map(toDisplayImage);
+  },
+
+  async searchImageIds(filter) {
+    const db = await initDB();
+    // Blobs in IndexedDB records are lazy handles, so this doesn't read image bytes.
+    // Legacy records already have every field search reads.
+    const records = (await db.getAllFromIndex("images", "byCreatedAt")).reverse();
+    return searchImages(records, filter).map((record) => record.id);
   },
 
   async getImageBlob(id: string, variant: ImageBlobVariant) {

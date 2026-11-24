@@ -21,6 +21,9 @@ export const getImagesPaginated: Repo["getImagesPaginated"] = (limit, offset) =>
   repo().getImagesPaginated(limit, offset);
 export const getAllImages: Repo["getAllImages"] = () => repo().getAllImages();
 export const getImageById: Repo["getImageById"] = (id) => repo().getImageById(id);
+/** Display-ready, in the given order. The caller owns the returned URLs. */
+export const getImagesByIds: Repo["getImagesByIds"] = (ids) => repo().getImagesByIds(ids);
+export const searchImageIds: Repo["searchImageIds"] = (filter) => repo().searchImageIds(filter);
 export const getImageBlob: Repo["getImageBlob"] = (id, variant) => repo().getImageBlob(id, variant);
 export const getImageStatRecords: Repo["getImageStatRecords"] = () => repo().getImageStatRecords();
 export const getImageCount: Repo["getImageCount"] = () => repo().getImageCount();

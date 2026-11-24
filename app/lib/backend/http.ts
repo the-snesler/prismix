@@ -117,6 +117,15 @@ export const httpRepository: GalleryRepository = {
     return requestJsonOrNull<ImageRecord>(`/api/images/${enc(id)}`);
   },
 
+  async getImagesByIds(ids) {
+    if (ids.length === 0) return [];
+    return requestJson<CompletedGalleryItem[]>("/api/images/by-ids", jsonInit("POST", { ids }));
+  },
+
+  searchImageIds(filter) {
+    return requestJson<string[]>("/api/images/search", jsonInit("POST", filter));
+  },
+
   async getImageBlob(id: string, variant: ImageBlobVariant) {
     const response = await requestOrNull(`/api/images/${enc(id)}/${variant}`);
     return response ? response.blob() : null;

@@ -10,15 +10,15 @@ import type { GalleryItem } from "~/types";
 import { formatRelativeDate } from "~/lib/util";
 import { getFirstCreatedAt, groupItemsByPrompt } from "~/lib/galleryGrouping";
 import { stripVariationSections } from "~/lib/promptVariations";
-import { cosine } from "~/lib/embeddingMath";
+import { searchImages, type GallerySearchFilter } from "~/lib/gallerySearch";
 import NumberFlow from "@number-flow/react";
 import { useAttachSelectedItemsToGeneration } from "~/hooks/useAttachSelectedItemsToGeneration";
 import { useGalleryDerivedIndexes } from "~/hooks/useGalleryDerivedIndexes";
 import { useQueryEmbedding } from "~/hooks/useQueryEmbedding";
-import { logger } from "~/lib/logging";
 import { importFromZip } from "~/lib/exportImport";
 
-const SEMANTIC_THRESHOLD = 0.1;
+/** Wait for typing to pause before searching the whole library. */
+const SEARCH_DEBOUNCE_MS = 150;
 const DEMO_BACKUP_URL = import.meta.env.VITE_DEMO_BACKUP_URL as string | undefined;
 
 export function Gallery({ viewMode }: { viewMode: "grid" | "timeline" }) {
@@ -35,65 +35,61 @@ export function Gallery({ viewMode }: { viewMode: "grid" | "timeline" }) {
   const toggleFavoritesFilter = useGalleryStore((s) => s.toggleFavoritesFilter);
   const characterFilter = useGalleryStore((s) => s.characterFilter);
   const setCharacterFilter = useGalleryStore((s) => s.setCharacterFilter);
+  const search = useGalleryStore((s) => s.search);
+  const runSearch = useGalleryStore((s) => s.runSearch);
+  const loadMoreSearchResults = useGalleryStore((s) => s.loadMoreSearchResults);
   const semanticSearchEnabled = useSettingsStore((s) => s.semanticSearchEnabled);
   const { itemsByPrompt } = useGalleryDerivedIndexes();
 
   const queryEmbedding = useQueryEmbedding(searchQuery, semanticSearchEnabled);
 
-  const filteredItems = useMemo(() => {
-    let sourceItems = showFavoritesOnly
-      ? items.filter((item) => item.status === "completed" && item.isFavorite)
-      : items;
-
-    if (characterFilter) {
-      sourceItems = sourceItems.filter((item) => item.characterIds?.includes(characterFilter));
-    }
-
-    if (!searchQuery.trim()) return sourceItems;
-    const q = searchQuery.trim().toLowerCase();
-    const substringMatches = sourceItems.filter(
-      (item) =>
-        item.prompt.toLowerCase().includes(q) ||
-        (item.basePrompt?.toLowerCase().includes(q) ?? false) ||
-        item.modelName.toLowerCase().includes(q)
-    );
-
-    logger.debug("Substring search results", {
+  const filter = useMemo<GallerySearchFilter>(
+    () => ({
       query: searchQuery,
-      count: substringMatches.length,
-    });
-
-    if (!semanticSearchEnabled || !queryEmbedding) return substringMatches;
-
-    const substringIds = new Set(substringMatches.map((i) => i.id));
-    const semanticMatches: GalleryItem[] = [];
-    const scored: Array<{ item: GalleryItem; score: number }> = [];
-    for (const item of sourceItems) {
-      if (item.status !== "completed") continue;
-      if (!item.embedding || item.embedding.length === 0) continue;
-      const score = cosine(queryEmbedding, item.embedding);
-      if (score >= SEMANTIC_THRESHOLD) scored.push({ item, score });
-      if (substringIds.has(item.id) && score < SEMANTIC_THRESHOLD) scored.push({ item, score });
-    }
-    scored.sort((a, b) => b.score - a.score);
-    for (const { item } of scored) semanticMatches.push(item);
-
-    logger.debug("Merged search results", {
-      query: searchQuery,
-      count: semanticMatches.length,
-    });
-
-    return semanticMatches;
-  }, [
-    items,
-    searchQuery,
-    showFavoritesOnly,
-    characterFilter,
-    semanticSearchEnabled,
-    queryEmbedding,
-  ]);
-
+      queryEmbedding: semanticSearchEnabled ? queryEmbedding : null,
+      favoritesOnly: showFavoritesOnly,
+      characterId: characterFilter,
+    }),
+    [searchQuery, semanticSearchEnabled, queryEmbedding, showFavoritesOnly, characterFilter]
+  );
   const isFiltered = Boolean(searchQuery.trim() || showFavoritesOnly || characterFilter);
+
+  // Only loaded items can be filtered locally, so ask the repository for every
+  // match in the library and load them as the user scrolls.
+  useEffect(() => {
+    const timer = setTimeout(
+      () => void runSearch(filter),
+      filter.query.trim() ? SEARCH_DEBOUNCE_MS : 0
+    );
+    return () => clearTimeout(timer);
+  }, [filter, runSearch]);
+
+  const activeSearch = search?.filter === filter ? search : null;
+  const searchRank = useMemo(
+    () => (activeSearch ? new Map(activeSearch.rankedIds.map((id, i) => [id, i])) : null),
+    [activeSearch]
+  );
+
+  // Rank loaded items locally (same function as the repository) so new
+  // generations, favorites, and embeddings show up without re-searching. Items
+  // ranked past what's been loaded are held back until scrolling reaches them.
+  const filteredItems = useMemo(() => {
+    if (!isFiltered) return items;
+    const matches = searchImages(items, filter);
+    if (!activeSearch || !searchRank) return matches;
+    return matches.filter((item) => {
+      const rank = searchRank.get(item.id);
+      return rank === undefined || rank < activeSearch.coveredCount;
+    });
+  }, [items, filter, isFiltered, activeSearch, searchRank]);
+
+  const unloadedResultCount = activeSearch
+    ? activeSearch.rankedIds.length - activeSearch.coveredCount
+    : 0;
+  const isSearchPending = isFiltered && (!activeSearch || unloadedResultCount > 0);
+  const canLoadMore = isFiltered ? unloadedResultCount > 0 : hasMore;
+  const loadMore = isFiltered ? loadMoreSearchResults : loadMoreImages;
+
   const filteredItemsByPrompt = useMemo(
     () => (isFiltered ? groupItemsByPrompt(filteredItems) : itemsByPrompt),
     [filteredItems, itemsByPrompt, isFiltered]
@@ -103,17 +99,19 @@ export function Gallery({ viewMode }: { viewMode: "grid" | "timeline" }) {
 
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el || !hasMore) return;
+    if (!el || !canLoadMore) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) void loadMoreImages();
+        if (entries[0]?.isIntersecting) void loadMore();
       },
       // scrollMargin is newer than TypeScript's DOM lib; browsers without it ignore it.
       { rootMargin: "200px", scrollMargin: "400px" } as IntersectionObserverInit
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, loadMoreImages]);
+    // A new observer reports right away if the sentinel is still on screen, so
+    // re-observe after each page in case one page doesn't fill the view.
+  }, [canLoadMore, loadMore, items.length]);
 
   if (isLoading) {
     return (
@@ -126,7 +124,7 @@ export function Gallery({ viewMode }: { viewMode: "grid" | "timeline" }) {
   return (
     <main className="bg-surface relative flex h-full flex-1 flex-col overflow-hidden">
       <GalleryHeader
-        count={isFiltered ? filteredItems.length : totalCount}
+        count={isFiltered ? filteredItems.length + unloadedResultCount : totalCount}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         showFavoritesOnly={showFavoritesOnly}
@@ -140,7 +138,9 @@ export function Gallery({ viewMode }: { viewMode: "grid" | "timeline" }) {
         className={`flex-1 overflow-y-auto p-2 md:py-4 md:pr-6 md:pl-88 ${selectedCount > 0 ? "pb-28" : ""}`}
       >
         {filteredItems.length === 0 ? (
-          isFiltered ? (
+          isSearchPending ? (
+            <div className="text-text-muted flex justify-center py-6 text-xs">Searching...</div>
+          ) : isFiltered ? (
             <NoSearchResults
               showFavoritesOnly={showFavoritesOnly}
               hasCharacterFilter={Boolean(characterFilter)}

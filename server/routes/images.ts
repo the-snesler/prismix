@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { ImageBlobVariant } from "~/lib/backend/types";
+import type { GallerySearchFilter } from "~/lib/gallerySearch";
 import type { ImageRecord, ImageScorecard, StoredImageRecord } from "~/types";
 import { ConflictError, type ImagePatch, type SqliteGalleryRepository } from "../repository";
 import { createThumbnail } from "../thumbnails";
@@ -71,6 +72,31 @@ function parsePatch(body: unknown): ImagePatch {
   return patch;
 }
 
+function parseSearchFilter(body: unknown): GallerySearchFilter {
+  if (!isObject(body)) throw new HttpError(400, "Body must be an object");
+  const { query, queryEmbedding, favoritesOnly, characterId } = body;
+  if (typeof query !== "string") throw new HttpError(400, "`query` must be a string");
+  if (
+    queryEmbedding !== null &&
+    queryEmbedding !== undefined &&
+    !(Array.isArray(queryEmbedding) && queryEmbedding.every((v) => typeof v === "number"))
+  ) {
+    throw new HttpError(400, "`queryEmbedding` must be a number array or null");
+  }
+  if (favoritesOnly !== undefined && typeof favoritesOnly !== "boolean") {
+    throw new HttpError(400, "`favoritesOnly` must be boolean");
+  }
+  if (characterId !== undefined && characterId !== null && typeof characterId !== "string") {
+    throw new HttpError(400, "`characterId` must be a string or null");
+  }
+  return {
+    query,
+    queryEmbedding: (queryEmbedding as number[] | null | undefined) ?? null,
+    favoritesOnly: favoritesOnly ?? false,
+    characterId: characterId || null,
+  };
+}
+
 function parseNonNegativeInt(value: string | undefined, fallback: number): number {
   if (value === undefined || value === "") return fallback;
   const n = Number(value);
@@ -98,6 +124,19 @@ export function imageRoutes(repository: SqliteGalleryRepository) {
   app.get("/needing-embedding", async (c) =>
     c.json(await repository.getImageIdsNeedingEmbedding(c.req.query("modelId") || null))
   );
+
+  app.post("/search", async (c) => {
+    const filter = parseSearchFilter(await readJsonBody(c));
+    return c.json(await repository.searchImageIds(filter));
+  });
+
+  app.post("/by-ids", async (c) => {
+    const body = await readJsonBody(c);
+    if (!isObject(body) || !isStringArray(body.ids)) {
+      throw new HttpError(400, "`ids` must be a string array");
+    }
+    return c.json(await repository.getImagesByIds(body.ids));
+  });
 
   app.post("/remove-style", async (c) => {
     const body = await readJsonBody(c);

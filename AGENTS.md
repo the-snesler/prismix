@@ -78,6 +78,7 @@ app/
 │   ├── archive/manifest.ts   # Archive format shared with the server (file names, parsing, merge rules)
 │   ├── replicateSchema.ts    # Replicate model schema introspection
 │   ├── galleryGrouping.ts    # Date-based grouping utility
+│   ├── gallerySearch.ts      # Search/filter ranking shared by the gallery and every repository
 │   ├── stats.ts              # Slim stat records + aggregation for the stats page
 │   ├── util.ts               # blobToBase64, sleep
 │   └── logging.ts            # Debug logger
@@ -128,7 +129,8 @@ Besides the browser-only build (Cloudflare, the default), the app can be built f
 3. **`galleryStore`** - Not persisted
    - `items: GalleryItem[]` — unified array of pending/generating/completed/failed items
    - `selectedItemIds`, `lastSelectedId` — multi-select state for gallery cards
-   - `searchQuery` — semantic/text search filter
+   - `searchQuery`, `showFavoritesOnly`, `characterFilter` — gallery filters
+   - `search` — repository results for the active filter (`runSearch` → `searchImageIds`): ranked IDs for the whole library, loaded into `items` a page at a time (`loadMoreSearchResults`). The gallery re-ranks loaded items with the same `searchImages` so it never has to load everything to filter; items pulled in only by a search are pruned when the filter clears
    - Pagination: `dbOffset`, `hasMore`, `isLoadingMore`, `totalCount`
    - Image lifecycle: `loadImages`, `loadMoreImages`, `addItem(s)`, `updateItem`, `deleteItem`, `dismissItem`
 
