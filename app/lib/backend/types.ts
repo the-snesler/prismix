@@ -7,6 +7,7 @@ import type {
   StoredImageRecord,
 } from "~/types";
 import type { ImageStatRecord } from "~/lib/stats";
+import type { GallerySearchFilter } from "~/lib/gallerySearch";
 
 export type ImageBlobVariant = "original" | "thumbnail";
 
@@ -18,7 +19,7 @@ export type ImageBlobVariant = "original" | "thumbnail";
  * `getImageBlob` when the bytes are actually needed, so a remote implementation
  * can serve images by URL instead of downloading every original.
  *
- * Methods returning URLs (`getImagesPaginated`, reference images) hand ownership
+ * Methods returning URLs (`getImagesPaginated`, `getImagesByIds`, reference images) hand ownership
  * of any object URLs to the caller; release them with `revokeImageUrl`.
  */
 export interface GalleryRepository {
@@ -32,6 +33,14 @@ export interface GalleryRepository {
   /** Every image's metadata, newest first. */
   getAllImages(): Promise<ImageRecord[]>;
   getImageById(id: string): Promise<ImageRecord | null>;
+  /** Display-ready images for `ids`, in that order; missing IDs are skipped. */
+  getImagesByIds(ids: string[]): Promise<CompletedGalleryItem[]>;
+  /**
+   * IDs of every image matching `filter`, best match first (ranked by
+   * `searchImages` in `~/lib/gallerySearch`). Covers the whole library, not just
+   * what the gallery has loaded.
+   */
+  searchImageIds(filter: GallerySearchFilter): Promise<string[]>;
   getImageBlob(id: string, variant: ImageBlobVariant): Promise<Blob | null>;
   /** Slim projection for the stats page; skips legacy normalization. */
   getImageStatRecords(): Promise<ImageStatRecord[]>;

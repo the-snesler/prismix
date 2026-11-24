@@ -1,5 +1,6 @@
 import type { GalleryRepository, ImageBlobVariant } from "~/lib/backend/types";
 import { toImageStatRecord, type ImageStatRecord } from "~/lib/stats";
+import { searchImages, type GallerySearchFilter, type SearchableImage } from "~/lib/gallerySearch";
 import type {
   CompletedGalleryItem,
   ImageRecord,
@@ -57,6 +58,26 @@ interface ImageRow {
   thumbnail_mime: string;
 }
 
+/** An image's searchable fields, with the embedding unpacked once. */
+interface SearchEntry extends SearchableImage {
+  createdAt: number;
+  embedding?: Float32Array;
+}
+
+function toSearchEntry(record: ImageRecord): SearchEntry {
+  const entry: SearchEntry = {
+    id: record.id,
+    createdAt: record.createdAt,
+    prompt: record.prompt ?? "",
+    modelName: record.modelName ?? "",
+    isFavorite: record.isFavorite,
+    characterIds: record.characterIds,
+  };
+  if (record.basePrompt) entry.basePrompt = record.basePrompt;
+  if (record.embedding?.length) entry.embedding = Float32Array.from(record.embedding);
+  return entry;
+}
+
 interface ReferenceRow {
   id: string;
   name: string;
@@ -101,6 +122,13 @@ function parseIdList(json: unknown): string[] {
 export class SqliteGalleryRepository implements GalleryRepository {
   /** IDs with a `saveImage` in flight, so a concurrent duplicate can't overwrite its files. */
   private readonly savingIds = new Set<string>();
+  /**
+   * Search fields for every image, built on first search so each search doesn't
+   * re-parse every record's embedding. Writes mark IDs stale; they're re-read
+   * at the next search.
+   */
+  private searchIndex: Map<string, SearchEntry> | null = null;
+  private readonly staleSearchIds = new Set<string>();
 
   constructor(
     private readonly db: Database,
@@ -129,6 +157,40 @@ export class SqliteGalleryRepository implements GalleryRepository {
     return { dir, originalFile, originalMime, thumbnailFile, thumbnailMime };
   }
 
+  private markSearchStale(id: string): void {
+    if (this.searchIndex) this.staleSearchIds.add(id);
+  }
+
+  private getSearchIndex(): Map<string, SearchEntry> {
+    if (!this.searchIndex) {
+      const rows = this.db.prepare("SELECT record FROM images").all() as unknown as ImageRow[];
+      this.searchIndex = new Map();
+      for (const row of rows) {
+        const entry = toSearchEntry(parseRecord(row));
+        this.searchIndex.set(entry.id, entry);
+      }
+      this.staleSearchIds.clear();
+      return this.searchIndex;
+    }
+    for (const id of this.staleSearchIds) {
+      const row = this.db.prepare("SELECT record FROM images WHERE id = ?").get(id) as
+        | Pick<ImageRow, "record">
+        | undefined;
+      if (row) this.searchIndex.set(id, toSearchEntry(parseRecord(row)));
+      else this.searchIndex.delete(id);
+    }
+    this.staleSearchIds.clear();
+    return this.searchIndex;
+  }
+
+  async searchImageIds(filter: GallerySearchFilter): Promise<string[]> {
+    // Newest first, matching getImagesPaginated, so unranked results keep gallery order.
+    const entries = [...this.getSearchIndex().values()].sort(
+      (a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+    );
+    return searchImages(entries, filter).map((entry) => entry.id);
+  }
+
   private upsertImageRow(
     image: ImageRecord,
     files: Awaited<ReturnType<SqliteGalleryRepository["writeImageFiles"]>>,
@@ -154,6 +216,7 @@ export class SqliteGalleryRepository implements GalleryRepository {
         files.thumbnailFile,
         files.thumbnailMime
       );
+    this.markSearchStale(image.id);
   }
 
   async saveImage(image: StoredImageRecord): Promise<void> {
@@ -196,6 +259,15 @@ export class SqliteGalleryRepository implements GalleryRepository {
       originalMimeType: row.original_mime,
       thumbnailUrl: imageFileUrl(row.id, "thumbnail"),
     };
+  }
+
+  async getImagesByIds(ids: string[]): Promise<CompletedGalleryItem[]> {
+    const items: CompletedGalleryItem[] = [];
+    for (const id of ids) {
+      const item = this.getDisplayImage(id);
+      if (item) items.push(item);
+    }
+    return items;
   }
 
   /** One image as the gallery shows it, or null. */
@@ -295,6 +367,7 @@ export class SqliteGalleryRepository implements GalleryRepository {
     const row = this.getImageRow(id);
     if (!row) return;
     this.db.prepare("DELETE FROM images WHERE id = ?").run(id);
+    this.markSearchStale(id);
     await this.files.removeDir(`images/${fileSafeId(id)}`);
     // Files written under a different layout (shouldn't happen, but be thorough).
     await this.files.remove(row.original_file);
@@ -313,6 +386,7 @@ export class SqliteGalleryRepository implements GalleryRepository {
       this.db
         .prepare("UPDATE images SET record = ?, created_at = ? WHERE id = ?")
         .run(JSON.stringify(record), record.createdAt, id);
+      this.markSearchStale(id);
       return record;
     });
   }

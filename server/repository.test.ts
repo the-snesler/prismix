@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDeps, type AppDeps } from "./app";
+import { createApp, createDeps, type AppDeps } from "./app";
 import { loadConfig } from "./config";
 import type { StoredImageRecord } from "~/types";
 
@@ -77,5 +77,83 @@ describe("getImageIdsNeedingEmbedding", () => {
       const missing = await deps.repository.getImageIdsNeedingEmbedding(modelId);
       expect(missing.length).toBe(total - indexed);
     }
+  });
+});
+
+describe("searchImageIds", () => {
+  const filter = { query: "", queryEmbedding: null, favoritesOnly: false, characterId: null };
+
+  beforeEach(async () => {
+    await saveImage("old-cat", 1, { embedding: [1, 0], embeddingModelId: "m" });
+    await saveImage("mid-dog", 2, { embedding: [0, 1], embeddingModelId: "m" });
+    await saveImage("new-cat", 3);
+  });
+
+  it("searches every image, newest first for substring matches", async () => {
+    expect(await deps.repository.searchImageIds({ ...filter, query: "cat" })).toEqual([
+      "new-cat",
+      "old-cat",
+    ]);
+  });
+
+  it("ranks by embedding similarity", async () => {
+    expect(
+      await deps.repository.searchImageIds({ ...filter, query: "pet", queryEmbedding: [0, 1] })
+    ).toEqual(["mid-dog"]);
+  });
+
+  it("sees writes made after the index was built", async () => {
+    expect(await deps.repository.searchImageIds({ ...filter, favoritesOnly: true })).toEqual([]);
+    await deps.repository.updateImageFavorite("old-cat", true);
+    await deps.repository.updateImageEmbedding("new-cat", [0, 1], "m");
+    await deps.repository.deleteImage("mid-dog");
+    await saveImage("newest-dog", 4, { embedding: [0, 1], embeddingModelId: "m" });
+
+    expect(await deps.repository.searchImageIds({ ...filter, favoritesOnly: true })).toEqual([
+      "old-cat",
+    ]);
+    expect(
+      await deps.repository.searchImageIds({ ...filter, query: "pet", queryEmbedding: [0, 1] })
+    ).toEqual(["newest-dog", "new-cat"]);
+  });
+
+  it("returns display items by ID in the requested order, skipping missing ones", async () => {
+    const items = await deps.repository.getImagesByIds(["old-cat", "missing", "new-cat"]);
+    expect(items.map((i) => [i.id, i.status, i.thumbnailUrl])).toEqual([
+      ["old-cat", "completed", "/api/images/old-cat/thumbnail"],
+      ["new-cat", "completed", "/api/images/new-cat/thumbnail"],
+    ]);
+  });
+});
+
+describe("search routes", () => {
+  const post = (path: string, body: unknown) =>
+    createApp(deps).request(`/api/images/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  beforeEach(async () => {
+    await saveImage("a-fox", 1, { embedding: [1, 0], embeddingModelId: "m" });
+    await saveImage("b-sky", 2, { embedding: [0, 1], embeddingModelId: "m" });
+  });
+
+  it("POST /search returns ranked IDs and fills optional fields", async () => {
+    const res = await post("search", { query: "zzz", queryEmbedding: [1, 0.1] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(["a-fox"]);
+  });
+
+  it("POST /search rejects a malformed filter", async () => {
+    expect((await post("search", { query: 5 })).status).toBe(400);
+    expect((await post("search", { query: "", queryEmbedding: ["x"] })).status).toBe(400);
+  });
+
+  it("POST /by-ids returns display items", async () => {
+    const res = await post("by-ids", { ids: ["b-sky", "missing"] });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Array<{ id: string }>).map((i) => i.id)).toEqual(["b-sky"]);
+    expect((await post("by-ids", { ids: "b-sky" })).status).toBe(400);
   });
 });
